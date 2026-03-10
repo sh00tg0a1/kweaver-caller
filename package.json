@@ -1,0 +1,36 @@
+{
+  "name": "kweaver-caller",
+  "version": "0.1.0",
+  "description": "A TypeScript CLI tool to call KWeaver.",
+  "type": "module",
+  "bin": "bin/kweaverc.js",
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node ./dist/cli.js",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "typescript",
+    "kweaver"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
+  }
+}
