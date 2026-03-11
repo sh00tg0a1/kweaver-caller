@@ -8,12 +8,14 @@ import {
   type CallbackSession,
   type ClientConfig,
   type TokenConfig,
+  getCurrentPlatform,
   loadCallbackSession,
   loadClientConfig,
   loadTokenConfig,
   saveCallbackSession,
   saveClientConfig,
   saveTokenConfig,
+  setCurrentPlatform,
 } from "../config/store.js";
 
 interface RegisterClientOptions {
@@ -137,7 +139,7 @@ export async function ensureClientConfig(options: EnsureClientOptions): Promise<
   const redirectUri = `http://127.0.0.1:${options.port}/callback`;
   const logoutRedirectUri = `http://127.0.0.1:${options.port}/successful-logout`;
 
-  const client = loadClientConfig();
+  const client = loadClientConfig(baseUrl);
   if (
     client &&
     !options.forceRegister &&
@@ -296,11 +298,18 @@ export async function refreshAccessToken(client: ClientConfig, refreshToken: str
 }
 
 export async function ensureValidToken(): Promise<TokenConfig> {
-  const client = loadClientConfig();
-  const token = loadTokenConfig();
+  const currentPlatform = getCurrentPlatform();
+  if (!currentPlatform) {
+    throw new Error("No active platform selected. Run `kweaverc auth <platform-url>` first.");
+  }
+
+  const client = loadClientConfig(currentPlatform);
+  const token = loadTokenConfig(currentPlatform);
 
   if (!client || !token) {
-    throw new Error("Missing saved credentials. Run `kweaverc auth <platform-url>` first.");
+    throw new Error(
+      `Missing saved credentials for ${currentPlatform}. Run \`kweaverc auth ${currentPlatform}\` first.`
+    );
   }
 
   if (!token.expiresAt) {
@@ -375,19 +384,21 @@ export async function login(options: AuthLoginOptions): Promise<{
   saveCallbackSession(callback);
 
   const token = await exchangeAuthorizationCode(client, callbackResult.code);
+  setCurrentPlatform(client.baseUrl);
 
   return { client, token, authorizationUrl, callback, created };
 }
 
-export function getStoredAuthSummary(): {
+export function getStoredAuthSummary(baseUrl?: string): {
   client: ClientConfig | null;
   token: TokenConfig | null;
   callback: CallbackSession | null;
 } {
+  const targetBaseUrl = baseUrl ?? getCurrentPlatform() ?? undefined;
   return {
-    client: loadClientConfig(),
-    token: loadTokenConfig(),
-    callback: loadCallbackSession(),
+    client: loadClientConfig(targetBaseUrl),
+    token: loadTokenConfig(targetBaseUrl),
+    callback: loadCallbackSession(targetBaseUrl),
   };
 }
 

@@ -1,0 +1,148 @@
+{
+    "id": "01KKE9ZQ6SEEZ4NJ3NTZ0KY756",
+    "name": "陈骁的测试",
+    "key": "01KKE9ZQ6SEEZ4NJ3NTYWXNFDS",
+    "profile": "陈骁的测试",
+    "product_key": "chatbi",
+    "avatar_type": 1,
+    "avatar": "1",
+    "status": "unpublished",
+    "is_built_in": 0,
+    "is_system_agent": 0,
+    "created_at": 1773227990233,
+    "updated_at": 1773227990233,
+    "created_by": "4921e08c-6f67-11f0-b0dc-36fa540cff80",
+    "updated_by": "4921e08c-6f67-11f0-b0dc-36fa540cff80",
+    "deleted_at": 0,
+    "deleted_by": "",
+    "created_type": "create",
+    "create_from": "dip",
+    "product_name": "",
+    "created_by_name": "",
+    "updated_by_name": "",
+    "category_id": "",
+    "category_name": "",
+    "version": "v0",
+    "latest_version": "v0",
+    "description": "",
+    "config": {
+        "input": {
+            "fields": [
+                {
+                    "name": "query",
+                    "type": "string",
+                    "desc": ""
+                },
+                {
+                    "name": "history",
+                    "type": "object",
+                    "desc": ""
+                },
+                {
+                    "name": "header",
+                    "type": "object",
+                    "desc": ""
+                },
+                {
+                    "name": "self_config",
+                    "type": "object",
+                    "desc": ""
+                }
+            ],
+            "rewrite": {
+                "enable": false,
+                "llm_config": {
+                    "id": "",
+                    "name": "test",
+                    "model_type": "llm",
+                    "temperature": 0.5,
+                    "top_p": 0.5,
+                    "top_k": 0,
+                    "frequency_penalty": 0,
+                    "presence_penalty": 0,
+                    "max_tokens": 1000
+                }
+            },
+            "augment": {
+                "enable": false,
+                "data_source": {
+                    "kg": []
+                }
+            }
+        },
+        "system_prompt": "你可以回答用户的任何问题",
+        "dolphin": "",
+        "is_dolphin_mode": 0,
+        "pre_dolphin": [],
+        "post_dolphin": [],
+        "data_source": {
+            "kg": [],
+            "doc": [],
+            "metric": null,
+            "kn_entry": null,
+            "knowledge_network": [],
+            "advanced_config": {
+                "kg": null,
+                "doc": null
+            }
+        },
+        "skills": {
+            "tools": [],
+            "agents": [],
+            "mcps": []
+        },
+        "llms": [
+            {
+                "is_default": true,
+                "llm_config": {
+                    "id": "1952617708323475456",
+                    "name": "qwen3-coder-plus",
+                    "model_type": "llm",
+                    "temperature": 1,
+                    "top_p": 1,
+                    "top_k": 1,
+                    "frequency_penalty": 0,
+                    "presence_penalty": 0,
+                    "max_tokens": 1000
+                }
+            }
+        ],
+        "is_data_flow_set_enabled": 0,
+        "opening_remark_config": null,
+        "preset_questions": [],
+        "output": {
+            "variables": {
+                "answer_var": "answer",
+                "doc_retrieval_var": "doc_retrieval_res",
+                "graph_retrieval_var": "graph_retrieval_res",
+                "related_questions_var": "related_questions",
+                "other_vars": null,
+                "middle_output_vars": null
+            },
+            "default_format": "markdown"
+        },
+        "built_in_can_edit_fields": null,
+        "memory": {
+            "is_enabled": false
+        },
+        "related_question": {
+            "is_enabled": false
+        },
+        "plan_mode": {
+            "is_enabled": false
+        },
+        "metadata": {
+            "config_tpl_version": "v1",
+            "config_last_set_timestamp": 1773227990233520788
+        }
+    },
+    "published_at": 0,
+    "published_by": "",
+    "published_by_name": "",
+    "publish_info": {
+        "is_api_agent": 0,
+        "is_web_sdk_agent": 0,
+        "is_skill_agent": 0,
+        "is_data_flow_agent": 0
+    }
+}

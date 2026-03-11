@@ -1,18 +1,27 @@
+import { runAgentCommand } from "./commands/agent.js";
 import { runAuthCommand } from "./commands/auth.js";
 import { runCallCommand } from "./commands/call.js";
+import { runTokenCommand } from "./commands/token.js";
 
 function printHelp(): void {
   console.log(`kweaverc
 
 Usage:
   kweaverc auth <platform-url>
-  kweaverc auth status
-  kweaverc call <url> [-X METHOD] [-H "Name: value"] [-d BODY] [--pretty] [--verbose]
+  kweaverc auth <platform-url> [--alias name]
+  kweaverc auth status [platform-url]
+  kweaverc auth list
+  kweaverc auth use <platform-url>
+  kweaverc token
+  kweaverc call <url> [-X METHOD] [-H "Name: value"] [-d BODY] [--pretty] [--verbose] [-bd value]
+  kweaverc agent chat <agent_id> [-m "message"] [--version value] [--conversation-id id] [--stream] [--no-stream] [--verbose] [-bd value]
   kweaverc --help
 
 Commands:
-  auth      Register a client if needed, start the local callback listener, and complete OAuth login
+  auth      Login, list, inspect, and switch saved platform auth profiles
+  token     Print the current access token, refreshing it first if needed
   call      Call an API with curl-style flags and auto-injected token headers
+  agent     Chat with a KWeaver agent (use 'agent chat <agent_id>' for interactive mode)
   help      Show this message`);
 }
 
@@ -30,6 +39,14 @@ export async function run(argv: string[]): Promise<number> {
 
   if (command === "call" || command === "curl") {
     return runCallCommand(rest);
+  }
+
+  if (command === "token") {
+    return runTokenCommand(rest);
+  }
+
+  if (command === "agent") {
+    return runAgentCommand(rest);
   }
 
   console.error(`Unknown command: ${command}`);

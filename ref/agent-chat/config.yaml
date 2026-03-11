@@ -1,0 +1,10 @@
+agent_chat:
+  api:
+    url: "https://dip.aishu.cn/api/agent-app/v1/app/01KFT0E68A1RES94ZV6DA131X4/api/chat/completion"
+    timeout: 600
+    stream: false
+    headers:
+      Accept-Language: "zh-CN"
+      x-Language: "zh-CN"
+  agent_key: "01KFT0E68A1RES94ZV6FK408NN"
+  agent_version: "v1"

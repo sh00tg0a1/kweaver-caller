@@ -1,0 +1,29 @@
+data: {"seq_id": 569, "key": ["message","content","middle_answer","progress",6,"end_time"], "content": 1773233211.067868, "action": "upsert"}
+
+data: {"seq_id": 570, "key": ["message","content","final_answer","answer","text"], "content": "", "action": "upsert"}
+
+data: {"seq_id": 571, "key": ["message","content","middle_answer","progress",7], "content": {"token_usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"prompt_tokens_details":{"cached_tokens":0,"uncached_tokens":0}},"id":"b24367ce-7235-4c3e-95f5-56882324befa","skill_info":{"type":"TOOL","name":"text2sql","args":[{"name":"input","value":"从temp0视图中选择前5条记录查看数据","type":"str"},{"type":"str","name":"action","value":"gen_exec"}],"checked":true},"flags":"","end_time":1773233211.068504,"agent_name":"text2sql","think":"","estimated_input_tokens":0,"stage":"skill","status":"processing","input_message":"{'input': '从temp0视图中选择前5条记录查看数据', 'action': 'gen_exec'}","start_time":1773233211.068504,"estimated_output_tokens":0,"answer":"","interrupted":false,"estimated_ratio_tokens":0}, "action": "append"}
+
+data: {"seq_id": 572, "key": ["message","content_type"], "content": "other", "action": "upsert"}
+
+data: {"seq_id": 573, "key": ["message","content","final_answer","answer_type_other"], "content": {"start_time":1773233211.068504,"block_answer":{"link":"无","code":"AgentOperatorIntegration.Forbidden.CommonUseForbidden","description":"权限不足，您暂无使用该资源的权限，请联系管理员申请授权","solution":"请联系管理员"},"agent_name":"text2sql","estimated_output_tokens":0,"answer":{"code":"AgentOperatorIntegration.Forbidden.CommonUseForbidden","description":"权限不足，您暂无使用该资源的权限，请联系管理员申请授权","solution":"请联系管理员","link":"无"},"input_message":"{'input': '从temp0视图中选择前5条记录查看数据', 'action': 'gen_exec'}","estimated_ratio_tokens":0,"estimated_input_tokens":0,"end_time":1773233211.086773,"stage":"skill","think":"","flags":"","skill_info":{"checked":true,"type":"TOOL","name":"text2sql","args":[{"name":"input","type":"str","value":"从temp0视图中选择前5条记录查看数据"},{"type":"str","value":"gen_exec","name":"action"}]},"interrupted":false,"token_usage":{},"status":"processing","id":"b24367ce-7235-4c3e-95f5-56882324befa"}, "action": "upsert"}
+
+data: {"seq_id": 574, "key": ["message","content","middle_answer","progress",7,"answer"], "content": {"solution":"请联系管理员","link":"无","code":"AgentOperatorIntegration.Forbidden.CommonUseForbidden","description":"权限不足，您暂无使用该资源的权限，请联系管理员申请授权"}, "action": "upsert"}
+
+data: {"seq_id": 575, "key": ["message","content","middle_answer","progress",7,"end_time"], "content": 1773233211.086773, "action": "upsert"}
+
+data: {"seq_id": 576, "key": ["message","content","final_answer","answer_type_other","end_time"], "content": 1773233211.0876486, "action": "upsert"}
+
+data: {"seq_id": 577, "key": ["message","content","final_answer","answer_type_other","status"], "content": "completed", "action": "upsert"}
+
+data: {"seq_id": 578, "key": ["message","content","middle_answer","progress",7,"status"], "content": "completed", "action": "upsert"}
+
+data: {"seq_id": 579, "key": ["message","content","middle_answer","progress",7,"end_time"], "content": 1773233211.0875401, "action": "upsert"}
+
+data: {"seq_id": 580, "key": ["message","content","middle_answer","progress",8], "content": {"stage":"llm","interrupted":false,"end_time":1773233212.3177638,"answer":"所有的","status":"processing","estimated_ratio_tokens":0,"token_usage":{"total_tokens":0,"prompt_tokens_details":{"cached_tokens":0,"uncached_tokens":0},"prompt_tokens":0,"completion_tokens":0},"id":"b2584660-5e2b-4572-accb-e62fde07e825","input_message":"用户的问题是：我们有哪些数据\n下面你将开始一步步思考，并一步步执行","start_time":1773233211.104275,"estimated_output_tokens":3,"agent_name":"main","think":"","skill_info":null,"flags":"","estimated_input_tokens":3937}, "action": "append"}
+
+data: {"seq_id": 581, "key": ["message","content","final_answer","answer_type_other"], "content": null, "action": "upsert"}
+
+data: {"seq_id": 582, "key": ["message","content","final_answer","answer","text"], "content": "所有的", "action": "append"}
+
+data: {"seq_id": 583, "key": ["message","content_type"], "content": "prompt", "action": "upsert"}

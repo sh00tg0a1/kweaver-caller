@@ -8,6 +8,7 @@ export interface CallInvocation {
   body?: string;
   pretty: boolean;
   verbose: boolean;
+  businessDomain: string;
 }
 
 export function parseCallArgs(args: string[]): CallInvocation {
@@ -17,6 +18,7 @@ export function parseCallArgs(args: string[]): CallInvocation {
   let url: string | undefined;
   let pretty = false;
   let verbose = false;
+  let businessDomain = "bd_public";
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -62,6 +64,15 @@ export function parseCallArgs(args: string[]): CallInvocation {
       continue;
     }
 
+    if (arg === "-bd" || arg === "--biz-domain") {
+      businessDomain = args[index + 1] ?? "";
+      if (!businessDomain || businessDomain.startsWith("-")) {
+        throw new Error("Missing value for biz-domain flag");
+      }
+      index += 1;
+      continue;
+    }
+
     if (arg === "--url") {
       url = args[index + 1];
       index += 1;
@@ -80,16 +91,20 @@ export function parseCallArgs(args: string[]): CallInvocation {
     throw new Error("Missing request URL");
   }
 
-  return { url, method, headers, body, pretty, verbose };
+  return { url, method, headers, body, pretty, verbose, businessDomain };
 }
 
-function injectAuthHeaders(headers: Headers, accessToken: string): void {
+function injectAuthHeaders(headers: Headers, accessToken: string, businessDomain: string): void {
   if (!headers.has("authorization")) {
     headers.set("authorization", `Bearer ${accessToken}`);
   }
 
   if (!headers.has("token")) {
     headers.set("token", accessToken);
+  }
+
+  if (!headers.has("x-business-domain")) {
+    headers.set("x-business-domain", businessDomain);
   }
 }
 
@@ -103,6 +118,15 @@ export function formatCallOutput(text: string, pretty: boolean): string {
   } catch {
     return text;
   }
+}
+
+export function stripSseDoneMarker(text: string, contentType?: string | null): string {
+  if (!text || !contentType?.includes("text/event-stream")) {
+    return text;
+  }
+
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "data: [DONE]");
+  return lines.join("\n").trimEnd();
 }
 
 export function formatVerboseRequest(invocation: CallInvocation): string[] {
@@ -132,7 +156,7 @@ export async function runCallCommand(args: string[]): Promise<number> {
 
   try {
     const token = await ensureValidToken();
-    injectAuthHeaders(invocation.headers, token.accessToken);
+    injectAuthHeaders(invocation.headers, token.accessToken, invocation.businessDomain);
 
     if (invocation.verbose) {
       for (const line of formatVerboseRequest(invocation)) {
@@ -146,7 +170,8 @@ export async function runCallCommand(args: string[]): Promise<number> {
       body: invocation.body,
     });
 
-    const text = await response.text();
+    const rawText = await response.text();
+    const text = stripSseDoneMarker(rawText, response.headers.get("content-type"));
     if (!response.ok) {
       throw new HttpError(response.status, response.statusText, text);
     }

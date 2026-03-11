@@ -1,4 +1,13 @@
-import { getConfigDir } from "../config/store.js";
+import {
+  getConfigDir,
+  getCurrentPlatform,
+  getPlatformAlias,
+  hasPlatform,
+  listPlatforms,
+  resolvePlatformIdentifier,
+  setCurrentPlatform,
+  setPlatformAlias,
+} from "../config/store.js";
 import type { CallbackSession, ClientConfig, TokenConfig } from "../config/store.js";
 import {
   formatHttpError,
@@ -15,10 +24,12 @@ export function formatAuthStatusSummary(input: {
   client: ClientConfig;
   token: TokenConfig | null;
   callback: CallbackSession | null;
+  isCurrent?: boolean;
 }): string[] {
   const lines = [
     `Config directory: ${getConfigDir()}`,
     `Platform: ${input.client.baseUrl}`,
+    `Current platform: ${input.isCurrent ? "yes" : "no"}`,
     `Client ID: ${input.client.clientId}`,
     `Redirect URI: ${input.client.redirectUri}`,
     `Token present: ${input.token ? "yes" : "no"}`,
@@ -51,17 +62,19 @@ export function formatAuthStatusSummary(input: {
 export async function runAuthCommand(args: string[]): Promise<number> {
   const target = args[0];
 
-  if (target && target !== "status") {
+  if (target && target !== "status" && target !== "list" && target !== "use") {
     try {
+      const normalizedTarget = normalizeBaseUrl(target);
       const port = Number(readOption(args, "--port") ?? "9010");
       const clientName = readOption(args, "--client-name") ?? "kweaverc";
+      const alias = readOption(args, "--alias");
       const forceRegister = args.includes("--force-register");
       const lang = readOption(args, "--lang") ?? "zh-cn";
       const product = readOption(args, "--product") ?? "adp";
       const xForwardedPrefix = readOption(args, "--x-forwarded-prefix") ?? "";
 
       const result = await login({
-        baseUrl: normalizeBaseUrl(target),
+        baseUrl: normalizedTarget,
         port,
         clientName,
         open: true,
@@ -71,11 +84,24 @@ export async function runAuthCommand(args: string[]): Promise<number> {
         xForwardedPrefix,
       });
 
+      if (alias) {
+        setPlatformAlias(normalizedTarget, alias);
+      }
+
       console.log(`Config directory: ${getConfigDir()}`);
       console.log(getClientProvisioningMessage(result.created));
       console.log(`Client ID: ${result.client.clientId}`);
+      if (alias) {
+        console.log(`Alias: ${alias.toLowerCase()}`);
+      } else {
+        const savedAlias = getPlatformAlias(result.client.baseUrl);
+        if (savedAlias) {
+          console.log(`Alias: ${savedAlias}`);
+        }
+      }
       console.log(`Authorization URL: ${result.authorizationUrl}`);
       console.log(`Callback received at: ${result.callback.receivedAt}`);
+      console.log(`Current platform: ${result.client.baseUrl}`);
       console.log(`Access token saved: yes`);
       return 0;
     } catch (error) {
@@ -85,21 +111,69 @@ export async function runAuthCommand(args: string[]): Promise<number> {
   }
 
   if (target === "status") {
-    const { client, token, callback } = getStoredAuthSummary();
+    const resolvedTarget = args[1] ? resolvePlatformIdentifier(args[1]) : undefined;
+    const statusTarget =
+      resolvedTarget && /^https?:\/\//.test(resolvedTarget) ? normalizeBaseUrl(resolvedTarget) : resolvedTarget ?? undefined;
+    const { client, token, callback } = getStoredAuthSummary(statusTarget);
 
     if (!client) {
-      console.error("No saved client config found.");
+      console.error(
+        statusTarget ? `No saved client config found for ${statusTarget}.` : "No saved client config found."
+      );
       return 1;
     }
 
-    for (const line of formatAuthStatusSummary({ client, token, callback })) {
+    const currentPlatform = getCurrentPlatform();
+    for (const line of formatAuthStatusSummary({
+      client,
+      token,
+      callback,
+      isCurrent: currentPlatform === client.baseUrl,
+    })) {
       console.log(line);
     }
     return 0;
   }
 
+  if (target === "list") {
+    const currentPlatform = getCurrentPlatform();
+    const platforms = listPlatforms();
+    if (platforms.length === 0) {
+      console.error("No saved platforms found.");
+      return 1;
+    }
+
+    console.log(`Config directory: ${getConfigDir()}`);
+    for (const platform of platforms) {
+      const marker = platform.baseUrl === currentPlatform ? "*" : "-";
+      const aliasPart = platform.alias ? ` alias=${platform.alias}` : "";
+      console.log(`${marker} ${platform.baseUrl}${aliasPart}  token=${platform.hasToken ? "yes" : "no"}`);
+    }
+    return 0;
+  }
+
+  if (target === "use") {
+    const resolvedTarget = args[1] ? resolvePlatformIdentifier(args[1]) : "";
+    const useTarget =
+      resolvedTarget && /^https?:\/\//.test(resolvedTarget) ? normalizeBaseUrl(resolvedTarget) : resolvedTarget;
+    if (!useTarget) {
+      console.error("Usage: kweaverc auth use <platform-url|alias>");
+      return 1;
+    }
+    if (!hasPlatform(useTarget)) {
+      console.error(`No saved client config found for ${useTarget}. Run \`kweaverc auth ${useTarget}\` first.`);
+      return 1;
+    }
+    setCurrentPlatform(useTarget);
+    console.log(`Current platform: ${useTarget}`);
+    return 0;
+  }
+
   console.error("Usage: kweaverc auth <platform-url>");
-  console.error("       kweaverc auth status");
+  console.error("       kweaverc auth <platform-url> [--alias <name>]");
+  console.error("       kweaverc auth status [platform-url|alias]");
+  console.error("       kweaverc auth list");
+  console.error("       kweaverc auth use <platform-url|alias>");
   return 1;
 }
 

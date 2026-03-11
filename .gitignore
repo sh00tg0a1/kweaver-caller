@@ -4,3 +4,5 @@ dist/
 .env
 coverage/
 *.tgz
+.ralph/
+RALPH_TASK.md

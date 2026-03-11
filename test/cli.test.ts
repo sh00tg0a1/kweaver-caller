@@ -10,7 +10,9 @@ import {
   formatCallOutput,
   formatVerboseRequest,
   parseCallArgs,
+  stripSseDoneMarker,
 } from "../src/commands/call.js";
+import { parseTokenArgs } from "../src/commands/token.js";
 import {
   buildAuthorizationUrl,
   formatHttpError,
@@ -35,6 +37,7 @@ test("parseCallArgs parses curl-style request flags", () => {
   assert.equal(parsed.body, "{\"ping\":true}");
   assert.equal(parsed.pretty, false);
   assert.equal(parsed.verbose, false);
+  assert.equal(parsed.businessDomain, "bd_public");
 });
 
 test("parseCallArgs defaults to POST when data is present", () => {
@@ -52,12 +55,30 @@ test("parseCallArgs supports verbose output", () => {
   assert.equal(parsed.verbose, true);
 });
 
+test("parseCallArgs supports custom business domain", () => {
+  const parsed = parseCallArgs(["https://dip.aishu.cn/api/demo", "-bd", "bd_enterprise"]);
+  assert.equal(parsed.businessDomain, "bd_enterprise");
+});
+
+test("parseTokenArgs accepts no flags", () => {
+  assert.doesNotThrow(() => parseTokenArgs([]));
+  assert.throws(() => parseTokenArgs(["--verbose"]), /Usage: kweaverc token/);
+});
+
 test("run succeeds for help", async () => {
   assert.equal(await run(["--help"]), 0);
 });
 
 test("run fails for unknown commands", async () => {
   assert.equal(await run(["missing-command"]), 1);
+});
+
+test("run agent shows subcommand help", async () => {
+  assert.equal(await run(["agent"]), 0);
+});
+
+test("run agent --help shows subcommand help", async () => {
+  assert.equal(await run(["agent", "--help"]), 0);
 });
 
 test("buildAuthorizationUrl generates a complete oauth url from client config", () => {
@@ -126,9 +147,11 @@ test("formatAuthStatusSummary includes platform token and callback details", () 
       scope: "openid offline all",
       receivedAt: "2026-03-10T11:05:00.000Z",
     },
+    isCurrent: true,
   });
 
   assert.ok(lines.includes("Platform: https://dip.aishu.cn"));
+  assert.ok(lines.includes("Current platform: yes"));
   assert.ok(lines.includes("Token present: yes"));
   assert.ok(lines.includes("Callback recorded: yes"));
   assert.ok(lines.includes("Last callback at: 2026-03-10T11:05:00.000Z"));
@@ -164,6 +187,12 @@ test("formatCallOutput pretty prints json when requested", () => {
   assert.equal(formatCallOutput("{\"ok\":true}", false), "{\"ok\":true}");
 });
 
+test("stripSseDoneMarker removes terminal done event from event streams", () => {
+  const text = 'data: {"ok":true}\n\ndata: [DONE]\n';
+  assert.equal(stripSseDoneMarker(text, "text/event-stream"), 'data: {"ok":true}');
+  assert.equal(stripSseDoneMarker(text, "application/json"), text);
+});
+
 test("formatVerboseRequest prints method url headers and body state", () => {
   const lines = formatVerboseRequest({
     url: "https://dip.aishu.cn/api/demo",
@@ -174,6 +203,7 @@ test("formatVerboseRequest prints method url headers and body state", () => {
     }),
     pretty: false,
     verbose: true,
+    businessDomain: "bd_public",
   });
 
   assert.ok(lines.includes("Method: GET"));
