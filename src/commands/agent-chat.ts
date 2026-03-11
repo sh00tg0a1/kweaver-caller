@@ -11,6 +11,49 @@ export interface ChatArgs {
   businessDomain: string;
 }
 
+function formatCliArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=+-]+$/.test(value)) {
+    return value;
+  }
+
+  return JSON.stringify(value);
+}
+
+export function buildContinueCommand(args: string[], conversationId: string): string {
+  const filteredArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-m" || arg === "--message") {
+      filteredArgs.push(arg, "{你的下一轮问题}");
+      i += 1;
+      continue;
+    }
+
+    if (
+      arg === "--conversation-id" ||
+      arg === "-cid" ||
+      arg === "--conversation_id" ||
+      arg === "-conversation-id" ||
+      arg === "-conversation_id" ||
+      arg === "--session-id"
+    ) {
+      i += 1;
+      continue;
+    }
+    filteredArgs.push(arg);
+  }
+
+  return [
+    "kweaverc",
+    "agent",
+    "chat",
+    ...filteredArgs.map((arg) => formatCliArg(arg)),
+    "-cid",
+    formatCliArg(conversationId),
+  ].join(" ");
+}
+
 export function parseChatArgs(args: string[]): ChatArgs {
   let agentId: string | undefined;
   let version = "v0";
@@ -46,6 +89,7 @@ export function parseChatArgs(args: string[]): ChatArgs {
 
     if (
       arg === "--conversation-id" ||
+      arg === "-cid" ||
       arg === "--conversation_id" ||
       arg === "-conversation-id" ||
       arg === "-conversation_id" ||
@@ -99,6 +143,7 @@ export function parseChatArgs(args: string[]): ChatArgs {
 }
 
 export async function runAgentChatCommand(args: string[]): Promise<number> {
+  const originalArgs = [...args];
   let chatArgs: ChatArgs;
   try {
     chatArgs = parseChatArgs(args);
@@ -152,6 +197,11 @@ export async function runAgentChatCommand(args: string[]): Promise<number> {
 
     if (result.text && !stream) {
       console.log(result.text);
+    }
+    if (result.conversationId && chatArgs.message !== undefined) {
+      console.error("");
+      console.error("To continue this conversation, rerun the command with --conversation-id:");
+      console.error(buildContinueCommand(originalArgs, result.conversationId));
     }
     if (result.conversationId && chatArgs.verbose) {
       console.error(`conversation_id: ${result.conversationId}`);

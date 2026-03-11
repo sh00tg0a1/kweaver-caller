@@ -12,6 +12,7 @@ Usage:
   kweaverc auth status [platform-url]
   kweaverc auth list
   kweaverc auth use <platform-url>
+  kweaverc auth delete <platform-url>
   kweaverc token
   kweaverc call <url> [-X METHOD] [-H "Name: value"] [-d BODY] [--pretty] [--verbose] [-bd value]
   kweaverc agent chat <agent_id> [-m "message"] [--version value] [--conversation-id id] [--stream] [--no-stream] [--verbose] [-bd value]

@@ -1,4 +1,5 @@
 import { fetchTextOrThrow, HttpError } from "../utils/http.js";
+import { normalizeDisplayText } from "../utils/display-text.js";
 
 export interface SendChatRequestOptions {
   baseUrl: string;
@@ -228,19 +229,44 @@ function getProgressFromResult(result: Record<string, unknown>): ProgressItem[] 
       skill_info:
         o.skill_info && typeof o.skill_info === "object"
           ? {
-              name: typeof (o.skill_info as Record<string, unknown>).name === "string" ? (o.skill_info as Record<string, unknown>).name as string : undefined,
-              type: typeof (o.skill_info as Record<string, unknown>).type === "string" ? (o.skill_info as Record<string, unknown>).type as string : undefined,
+              name:
+                typeof (o.skill_info as Record<string, unknown>).name === "string"
+                  ? normalizeDisplayText((o.skill_info as Record<string, unknown>).name as string)
+                  : undefined,
+              type:
+                typeof (o.skill_info as Record<string, unknown>).type === "string"
+                  ? (o.skill_info as Record<string, unknown>).type as string
+                  : undefined,
+              checked:
+                typeof (o.skill_info as Record<string, unknown>).checked === "boolean"
+                  ? (o.skill_info as Record<string, unknown>).checked as boolean
+                  : undefined,
+              args: Array.isArray((o.skill_info as Record<string, unknown>).args)
+                ? ((o.skill_info as Record<string, unknown>).args as Array<Record<string, unknown>>)
+                    .filter((arg) => arg && typeof arg === "object")
+                    .map((arg) => ({
+                      name: typeof arg.name === "string" ? normalizeDisplayText(arg.name) : undefined,
+                      type: typeof arg.type === "string" ? arg.type : undefined,
+                      value:
+                        typeof arg.value === "string"
+                          ? normalizeDisplayText(arg.value)
+                          : arg.value,
+                    }))
+                : undefined,
             }
           : undefined,
-      status: typeof o.status === "string" ? o.status : undefined,
+      status: typeof o.status === "string" ? normalizeDisplayText(o.status) : undefined,
       answer:
         typeof answer === "string"
-          ? answer
+          ? normalizeDisplayText(answer)
           : answer && typeof answer === "object" && answer !== null
             ? (answer as Record<string, unknown>)
             : undefined,
-      description: typeof o.description === "string" ? o.description : undefined,
-      result: typeof o.result === "string" ? o.result : undefined,
+      description: typeof o.description === "string" ? normalizeDisplayText(o.description) : undefined,
+      result: typeof o.result === "string" ? normalizeDisplayText(o.result) : undefined,
+      stage: typeof o.stage === "string" ? normalizeDisplayText(o.stage) : undefined,
+      input_message:
+        typeof o.input_message === "string" ? normalizeDisplayText(o.input_message) : undefined,
     };
   });
 }
@@ -280,7 +306,7 @@ function applySseDataLine(
       onProgress(progress);
     }
 
-    const text = extractText(state.result);
+    const text = normalizeDisplayText(extractText(state.result));
     if (text && text !== state.lastText) {
       if (onTextDelta) {
         onTextDelta(text);
@@ -363,7 +389,7 @@ export async function sendChatRequest(options: SendChatRequestOptions): Promise<
 
   const text = await response.text();
   const json = parseJsonResponse(text);
-  const resultText = extractText(json);
+  const resultText = normalizeDisplayText(extractText(json));
   const convId = json.conversation_id as string | undefined;
   const progress = getProgressFromResult(json as Record<string, unknown>);
 
@@ -449,10 +475,10 @@ export async function sendChatRequestStream(
 
   const text = await response.text();
   const json = parseJsonResponse(text);
-  const resultText = extractText(json);
+  const resultText = normalizeDisplayText(extractText(json));
   const convId = json.conversation_id as string | undefined;
   callbacks.onTextDelta(resultText);
-  return { text: resultText, conversationId: convId };
+  return { text: resultText, conversationId: convId, progress: getProgressFromResult(json) };
 }
 
 async function handleStreamResponse(
@@ -499,6 +525,6 @@ async function handleStreamResponse(
     process.stdout.write("\n");
   }
 
-  const finalText = extractText(state.result) || state.lastText;
+  const finalText = normalizeDisplayText(extractText(state.result) || state.lastText);
   return { text: finalText, conversationId: state.conversationId };
 }

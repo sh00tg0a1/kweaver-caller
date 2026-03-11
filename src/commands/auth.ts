@@ -1,4 +1,5 @@
 import {
+  deletePlatform,
   getConfigDir,
   getCurrentPlatform,
   getPlatformAlias,
@@ -62,7 +63,7 @@ export function formatAuthStatusSummary(input: {
 export async function runAuthCommand(args: string[]): Promise<number> {
   const target = args[0];
 
-  if (target && target !== "status" && target !== "list" && target !== "use") {
+  if (target && target !== "status" && target !== "list" && target !== "use" && target !== "delete") {
     try {
       const normalizedTarget = normalizeBaseUrl(target);
       const port = Number(readOption(args, "--port") ?? "9010");
@@ -169,11 +170,35 @@ export async function runAuthCommand(args: string[]): Promise<number> {
     return 0;
   }
 
+  if (target === "delete") {
+    const resolvedTarget = args[1] ? resolvePlatformIdentifier(args[1]) : "";
+    const deleteTarget =
+      resolvedTarget && /^https?:\/\//.test(resolvedTarget) ? normalizeBaseUrl(resolvedTarget) : resolvedTarget;
+    if (!deleteTarget) {
+      console.error("Usage: kweaverc auth delete <platform-url|alias>");
+      return 1;
+    }
+    if (!hasPlatform(deleteTarget)) {
+      console.error(`No saved client config found for ${deleteTarget}.`);
+      return 1;
+    }
+
+    const wasCurrent = getCurrentPlatform() === deleteTarget;
+    deletePlatform(deleteTarget);
+    console.log(`Deleted platform: ${deleteTarget}`);
+    if (wasCurrent) {
+      const nextCurrent = getCurrentPlatform();
+      console.log(`Current platform: ${nextCurrent ?? "none"}`);
+    }
+    return 0;
+  }
+
   console.error("Usage: kweaverc auth <platform-url>");
   console.error("       kweaverc auth <platform-url> [--alias <name>]");
   console.error("       kweaverc auth status [platform-url|alias]");
   console.error("       kweaverc auth list");
   console.error("       kweaverc auth use <platform-url|alias>");
+  console.error("       kweaverc auth delete <platform-url|alias>");
   return 1;
 }
 

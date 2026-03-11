@@ -5,7 +5,7 @@ import {
   decodeHtmlEntities,
   normalizeDisplayText,
   stripHtmlComments,
-} from "../src/ui/display-text.js";
+} from "../src/utils/display-text.js";
 
 test("decodeHtmlEntities decodes basic quote entities", () => {
   assert.equal(
@@ -32,7 +32,15 @@ test("stripHtmlComments removes comment blocks", () => {
   assert.equal(stripHtmlComments("a<!-- x -->b"), "ab");
 });
 
-test("stripHtmlComments drops content that starts with html comment", () => {
-  assert.equal(stripHtmlComments("<!-- hidden -->should not render"), "");
+test("stripHtmlComments suppresses leading comments but keeps following text", () => {
+  assert.equal(stripHtmlComments("<!-- hidden -->should render"), "should render");
+  assert.equal(stripHtmlComments("   <!-- hidden -->  still here"), "still here");
   assert.equal(stripHtmlComments("   <!-- hidden only"), "");
+});
+
+test("normalizeDisplayText removes encoded leading comments", () => {
+  assert.equal(
+    normalizeDisplayText("&lt;!-- hidden --&gt;品牌&amp;quot;恬露&amp;quot;"),
+    '品牌"恬露"'
+  );
 });

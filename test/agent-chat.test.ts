@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseChatArgs } from "../src/commands/agent-chat.js";
+import { buildContinueCommand, parseChatArgs } from "../src/commands/agent-chat.js";
 import {
   buildAgentInfoUrl,
   buildChatUrl,
@@ -58,6 +58,11 @@ test("parseChatArgs accepts reference-style -conversation_id alias", () => {
   assert.equal(args.conversationId, "conv_abc");
 });
 
+test("parseChatArgs accepts -cid alias", () => {
+  const args = parseChatArgs(["agent-123", "-cid", "conv_short"]);
+  assert.equal(args.conversationId, "conv_short");
+});
+
 test("parseChatArgs --stream and --no-stream set stream flag", () => {
   const withStream = parseChatArgs(["agent-123", "--stream"]);
   const noStream = parseChatArgs(["agent-123", "--no-stream"]);
@@ -99,6 +104,30 @@ test("parseChatArgs rejects missing flag values", () => {
   assert.throws(
     () => parseChatArgs(["agent-123", "--conversation-id"]),
     /Missing value for conversation-id flag/
+  );
+});
+
+test("buildContinueCommand preserves original flags and adds conversation id", () => {
+  const command = buildContinueCommand(
+    ["agent-123", "-m", "hello world", "--no-stream", "-bd", "bd_enterprise"],
+    "conv_123"
+  );
+
+  assert.equal(
+    command,
+    'kweaverc agent chat agent-123 -m "{你的下一轮问题}" --no-stream -bd bd_enterprise -cid conv_123'
+  );
+});
+
+test("buildContinueCommand replaces an existing conversation flag", () => {
+  const command = buildContinueCommand(
+    ["agent-123", "-m", "hello", "--conversation-id", "old_conv", "--verbose"],
+    "new_conv"
+  );
+
+  assert.equal(
+    command,
+    'kweaverc agent chat agent-123 -m "{你的下一轮问题}" --verbose -cid new_conv'
   );
 });
 
@@ -190,6 +219,32 @@ test("sendChatRequest returns text and conversation_id from JSON response", { co
     });
     assert.equal(result.text, "Hello back!");
     assert.equal(result.conversationId, "conv_123");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("sendChatRequest normalizes escaped quotes in JSON responses", { concurrency: false }, async () => {
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        conversation_id: "conv_quotes",
+        final_answer: { answer: { text: "品牌家族：多个&amp;quot;恬露&amp;quot;系列品牌" } },
+      }),
+      { headers: { "content-type": "application/json" } }
+    );
+
+  try {
+    const result = await sendChatRequest({
+      baseUrl: "https://dip.aishu.cn",
+      accessToken: "token-abc",
+      agentId: "agent-xyz",
+      agentKey: "agent-key-xyz",
+      agentVersion: "v2",
+      query: "hello",
+      stream: false,
+    });
+    assert.equal(result.text, '品牌家族：多个"恬露"系列品牌');
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -291,6 +346,54 @@ test("sendChatRequestStream invokes onTextDelta with full text and returns ChatR
     assert.equal(result.conversationId, "conv_tui");
     assert.equal(result.text, "Hi there!");
     assert.deepEqual(fullTexts, ["Hi", "Hi there", "Hi there!"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("sendChatRequestStream suppresses leading html comments and decodes quotes", {
+  concurrency: false,
+}, async () => {
+  const fullTexts: string[] = [];
+  const encoder = new TextEncoder();
+  const chunks = [
+    'data: {"key":["conversation_id"],"content":"conv_clean","action":"upsert"}\n',
+    'data: {"key":["message","text"],"content":"&lt;!-- hidden","action":"append"}\n',
+    'data: {"key":["message","text"],"content":" --&gt;品牌家族：多个&amp;quot;恬露&amp;quot;系列品牌","action":"append"}\n',
+  ];
+
+  globalThis.fetch = async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } }
+    );
+
+  try {
+    const result = await sendChatRequestStream(
+      {
+        baseUrl: "https://dip.aishu.cn",
+        accessToken: "token-abc",
+        agentId: "agent-xyz",
+        agentKey: "agent-key-xyz",
+        agentVersion: "v2",
+        query: "hello",
+        stream: true,
+      },
+      {
+        onTextDelta: (fullText) => fullTexts.push(fullText),
+      }
+    );
+
+    assert.equal(result.conversationId, "conv_clean");
+    assert.equal(result.text, '品牌家族：多个"恬露"系列品牌');
+    assert.deepEqual(fullTexts, ['品牌家族：多个"恬露"系列品牌']);
   } finally {
     globalThis.fetch = originalFetch;
   }

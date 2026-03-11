@@ -102,6 +102,45 @@ test("store supports aliases and resolves them to platform urls", async () => {
   );
 });
 
+test("store deletes platform data aliases and resets current platform", async () => {
+  const configDir = createStoreDir();
+  const store = await importStoreModule(configDir);
+
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "client-a",
+    clientSecret: "secret-a",
+    redirectUri: "http://127.0.0.1:9010/callback",
+    logoutRedirectUri: "http://127.0.0.1:9010/successful-logout",
+    scope: "openid offline all",
+  });
+  store.saveTokenConfig({
+    baseUrl: "https://dip.aishu.cn",
+    accessToken: "token-a",
+    tokenType: "bearer",
+    scope: "openid offline all",
+    obtainedAt: "2026-03-11T00:00:00.000Z",
+  });
+  store.setPlatformAlias("https://dip.aishu.cn", "dip");
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  store.saveClientConfig({
+    baseUrl: "https://adp.aishu.cn",
+    clientId: "client-b",
+    clientSecret: "secret-b",
+    redirectUri: "http://127.0.0.1:9010/callback",
+    logoutRedirectUri: "http://127.0.0.1:9010/successful-logout",
+    scope: "openid offline all",
+  });
+
+  store.deletePlatform("https://dip.aishu.cn");
+
+  assert.equal(store.hasPlatform("https://dip.aishu.cn"), false);
+  assert.equal(store.getPlatformAlias("https://dip.aishu.cn"), null);
+  assert.equal(store.resolvePlatformIdentifier("dip"), "dip");
+  assert.equal(store.getCurrentPlatform(), "https://adp.aishu.cn");
+});
+
 test("store migrates legacy single-platform files automatically", async () => {
   const configDir = createStoreDir();
   mkdirSync(configDir, { recursive: true });

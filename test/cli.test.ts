@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { run } from "../src/cli.js";
 import {
@@ -19,6 +23,28 @@ import {
   getAuthorizationSuccessMessage,
 } from "../src/auth/oauth.js";
 import { NetworkRequestError } from "../src/utils/http.js";
+
+function createConfigDir(): string {
+  return mkdtempSync(join(tmpdir(), "kweaverc-cli-"));
+}
+
+async function importCliModule(configDir: string) {
+  process.env.KWEAVERC_CONFIG_DIR = configDir;
+  const moduleUrl = pathToFileURL(join(process.cwd(), "src/cli.ts")).href;
+  return import(`${moduleUrl}?t=${Date.now()}-${Math.random()}`);
+}
+
+async function importAuthModule(configDir: string) {
+  process.env.KWEAVERC_CONFIG_DIR = configDir;
+  const moduleUrl = pathToFileURL(join(process.cwd(), "src/commands/auth.ts")).href;
+  return import(`${moduleUrl}?t=${Date.now()}-${Math.random()}`);
+}
+
+async function importStoreModule(configDir: string) {
+  process.env.KWEAVERC_CONFIG_DIR = configDir;
+  const moduleUrl = pathToFileURL(join(process.cwd(), "src/config/store.ts")).href;
+  return import(`${moduleUrl}?t=${Date.now()}-${Math.random()}`);
+}
 
 test("parseCallArgs parses curl-style request flags", () => {
   const parsed = parseCallArgs([
@@ -116,6 +142,43 @@ test("getClientProvisioningMessage describes whether a client was reused or crea
 
 test("help text exposes auth as completing oauth login through local callback", async () => {
   assert.equal(await run(["help"]), 0);
+});
+
+test("run auth delete removes a saved platform by alias", async () => {
+  const configDir = createConfigDir();
+  const store = await importStoreModule(configDir);
+  const auth = await importAuthModule(configDir);
+
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "client-a",
+    clientSecret: "secret-a",
+    redirectUri: "http://127.0.0.1:9010/callback",
+    logoutRedirectUri: "http://127.0.0.1:9010/successful-logout",
+    scope: "openid offline all",
+  });
+  store.saveTokenConfig({
+    baseUrl: "https://dip.aishu.cn",
+    accessToken: "token-a",
+    tokenType: "bearer",
+    scope: "openid offline all",
+    obtainedAt: "2026-03-11T00:00:00.000Z",
+  });
+  store.setPlatformAlias("https://dip.aishu.cn", "dip");
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  store.saveClientConfig({
+    baseUrl: "https://adp.aishu.cn",
+    clientId: "client-b",
+    clientSecret: "secret-b",
+    redirectUri: "http://127.0.0.1:9010/callback",
+    logoutRedirectUri: "http://127.0.0.1:9010/successful-logout",
+    scope: "openid offline all",
+  });
+
+  assert.equal(await auth.runAuthCommand(["delete", "dip"]), 0);
+  assert.equal(store.hasPlatform("https://dip.aishu.cn"), false);
+  assert.equal(store.getCurrentPlatform(), "https://adp.aishu.cn");
 });
 
 test("formatAuthStatusSummary includes platform token and callback details", () => {

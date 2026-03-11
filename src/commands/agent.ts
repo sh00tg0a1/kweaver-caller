@@ -11,6 +11,7 @@ Subcommands:
   chat <agent_id>                    Start interactive chat with an agent
   chat <agent_id> -m "message"       Send a single message (non-interactive)
        [--conversation-id id]         Continue an existing conversation
+       [-cid id]                      Short alias for --conversation-id
        [--session-id id]             Alias for --conversation-id
        [-conversation_id id]         Compatibility alias for reference examples
        [--version value]             Resolve agent key from a specific version (default: v0)
@@ -35,6 +36,7 @@ Non-interactive mode:
 Options:
   -m, --message <text>       Single message (non-interactive)
   --conversation-id <id>     Continue existing conversation
+  -cid <id>                  Short alias for --conversation-id
   --session-id <id>          Alias for --conversation-id
   -conversation_id <id>      Compatibility alias for reference examples
   --version <value>          Agent version used to resolve the agent key (default: v0)

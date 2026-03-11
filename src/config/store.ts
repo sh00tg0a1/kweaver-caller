@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -56,12 +57,29 @@ export interface PlatformSummary {
 }
 
 const CONFIG_DIR = process.env.KWEAVERC_CONFIG_DIR || join(homedir(), ".kweaver");
-const PLATFORMS_DIR = join(CONFIG_DIR, "platforms");
-const STATE_FILE = join(CONFIG_DIR, "state.json");
+function getConfigDirPath(): string {
+  return process.env.KWEAVERC_CONFIG_DIR || join(homedir(), ".kweaver");
+}
 
-const LEGACY_CLIENT_FILE = join(CONFIG_DIR, "client.json");
-const LEGACY_TOKEN_FILE = join(CONFIG_DIR, "token.json");
-const LEGACY_CALLBACK_FILE = join(CONFIG_DIR, "callback.json");
+function getPlatformsDirPath(): string {
+  return join(getConfigDirPath(), "platforms");
+}
+
+function getStateFilePath(): string {
+  return join(getConfigDirPath(), "state.json");
+}
+
+function getLegacyClientFilePath(): string {
+  return join(getConfigDirPath(), "client.json");
+}
+
+function getLegacyTokenFilePath(): string {
+  return join(getConfigDirPath(), "token.json");
+}
+
+function getLegacyCallbackFilePath(): string {
+  return join(getConfigDirPath(), "callback.json");
+}
 
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
@@ -70,8 +88,8 @@ function ensureDir(path: string): void {
 }
 
 function ensureConfigDir(): void {
-  ensureDir(CONFIG_DIR);
-  ensureDir(PLATFORMS_DIR);
+  ensureDir(getConfigDirPath());
+  ensureDir(getPlatformsDirPath());
 }
 
 function readJsonFile<T>(filePath: string): T | null {
@@ -97,7 +115,7 @@ function encodePlatformKey(baseUrl: string): string {
 }
 
 function getPlatformDir(baseUrl: string): string {
-  return join(PLATFORMS_DIR, encodePlatformKey(baseUrl));
+  return join(getPlatformsDirPath(), encodePlatformKey(baseUrl));
 }
 
 function getPlatformFile(baseUrl: string, filename: string): string {
@@ -109,11 +127,11 @@ function ensurePlatformDir(baseUrl: string): void {
 }
 
 function readState(): StoreState {
-  return readJsonFile<StoreState>(STATE_FILE) ?? {};
+  return readJsonFile<StoreState>(getStateFilePath()) ?? {};
 }
 
 function writeState(state: StoreState): void {
-  writeJsonFile(STATE_FILE, state);
+  writeJsonFile(getStateFilePath(), state);
 }
 
 function normalizeAlias(value: string): string {
@@ -121,14 +139,18 @@ function normalizeAlias(value: string): string {
 }
 
 function migrateLegacyFilesIfNeeded(): void {
-  const hasLegacy = existsSync(LEGACY_CLIENT_FILE) || existsSync(LEGACY_TOKEN_FILE) || existsSync(LEGACY_CALLBACK_FILE);
+  const legacyClientFile = getLegacyClientFilePath();
+  const legacyTokenFile = getLegacyTokenFilePath();
+  const legacyCallbackFile = getLegacyCallbackFilePath();
+  const hasLegacy =
+    existsSync(legacyClientFile) || existsSync(legacyTokenFile) || existsSync(legacyCallbackFile);
   if (!hasLegacy) {
     return;
   }
 
-  const legacyClient = readJsonFile<ClientConfig>(LEGACY_CLIENT_FILE);
-  const legacyToken = readJsonFile<TokenConfig>(LEGACY_TOKEN_FILE);
-  const legacyCallback = readJsonFile<CallbackSession>(LEGACY_CALLBACK_FILE);
+  const legacyClient = readJsonFile<ClientConfig>(legacyClientFile);
+  const legacyToken = readJsonFile<TokenConfig>(legacyTokenFile);
+  const legacyCallback = readJsonFile<CallbackSession>(legacyCallbackFile);
   const baseUrl = legacyClient?.baseUrl ?? legacyToken?.baseUrl ?? legacyCallback?.baseUrl;
 
   if (!baseUrl) {
@@ -162,7 +184,7 @@ function ensureStoreReady(): void {
 }
 
 export function getConfigDir(): string {
-  return CONFIG_DIR;
+  return getConfigDirPath();
 }
 
 export function getCurrentPlatform(): string | null {
@@ -192,6 +214,29 @@ export function setPlatformAlias(baseUrl: string, alias: string): void {
 
   aliases[normalizedAlias] = baseUrl;
   writeState({ ...state, aliases });
+}
+
+export function deletePlatformAlias(baseUrl: string): void {
+  ensureStoreReady();
+  const state = readState();
+  const aliases = { ...(state.aliases ?? {}) };
+  let changed = false;
+
+  for (const [alias, targetBaseUrl] of Object.entries(aliases)) {
+    if (targetBaseUrl === baseUrl) {
+      delete aliases[alias];
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    return;
+  }
+
+  writeState({
+    ...state,
+    aliases: Object.keys(aliases).length > 0 ? aliases : undefined,
+  });
 }
 
 export function getPlatformAlias(baseUrl: string): string | null {
@@ -271,13 +316,35 @@ export function hasPlatform(baseUrl: string): boolean {
   return existsSync(getPlatformFile(baseUrl, "client.json"));
 }
 
+export function deletePlatform(baseUrl: string): void {
+  ensureStoreReady();
+  const platformDir = getPlatformDir(baseUrl);
+  if (!existsSync(platformDir)) {
+    return;
+  }
+
+  deletePlatformAlias(baseUrl);
+  rmSync(platformDir, { recursive: true, force: true });
+
+  const state = readState();
+  if (state.currentPlatform !== baseUrl) {
+    return;
+  }
+
+  const remainingPlatforms = listPlatforms();
+  writeState({
+    ...readState(),
+    currentPlatform: remainingPlatforms[0]?.baseUrl,
+  });
+}
+
 export function listPlatforms(): PlatformSummary[] {
   ensureStoreReady();
   const currentPlatform = getCurrentPlatform();
   const items: PlatformSummary[] = [];
 
-  for (const entry of readdirSync(PLATFORMS_DIR)) {
-    const dirPath = join(PLATFORMS_DIR, entry);
+  for (const entry of readdirSync(getPlatformsDirPath())) {
+    const dirPath = join(getPlatformsDirPath(), entry);
     if (!statSync(dirPath).isDirectory()) {
       continue;
     }
