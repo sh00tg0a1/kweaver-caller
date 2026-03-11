@@ -1,9 +1,5 @@
-import * as readline from "node:readline";
-
 import { ensureValidToken, formatHttpError } from "../auth/oauth.js";
 import { fetchAgentInfo, sendChatRequest } from "../api/agent-chat.js";
-
-const EXIT_WORDS = ["exit", "quit", "q"];
 
 export interface ChatArgs {
   agentId: string;
@@ -137,7 +133,7 @@ export async function runAgentChatCommand(args: string[]): Promise<number> {
   }
 
   if (isInteractive) {
-    return runInteractiveChat(chatArgs, stream, agentInfo);
+    return runTui(chatArgs, agentInfo, token);
   }
 
   try {
@@ -167,56 +163,26 @@ export async function runAgentChatCommand(args: string[]): Promise<number> {
   }
 }
 
-async function runInteractiveChat(
+async function runTui(
   chatArgs: ChatArgs,
-  stream: boolean,
-  agentInfo: { id: string; key: string; version: string }
+  agentInfo: { id: string; key: string; version: string },
+  _token: { baseUrl: string; accessToken: string }
 ): Promise<number> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  let conversationId = chatArgs.conversationId;
-
-  const prompt = (): void => {
-    rl.question("> ", async (line) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        prompt();
-        return;
-      }
-      if (EXIT_WORDS.includes(trimmed.toLowerCase())) {
-        rl.close();
-        return;
-      }
-
-      try {
-        const tokenValid = await ensureValidToken();
-        const result = await sendChatRequest({
-          baseUrl: tokenValid.baseUrl,
-          accessToken: tokenValid.accessToken,
-          agentId: agentInfo.id,
-          agentKey: agentInfo.key,
-          agentVersion: agentInfo.version,
-          query: trimmed,
-          conversationId,
-          stream,
-          verbose: chatArgs.verbose,
-          businessDomain: chatArgs.businessDomain,
-        });
-
-        if (result.conversationId) {
-          conversationId = result.conversationId;
-        }
-        if (result.text && !stream) {
-          console.log(result.text);
-        }
-      } catch (error) {
-        console.error(formatHttpError(error));
-      }
-      prompt();
-    });
-  };
-
-  prompt();
-  return new Promise((resolve) => {
-    rl.on("close", () => resolve(0));
-  });
+  const { createElement } = await import("react");
+  const { render } = await import("ink");
+  const { ChatApp } = await import("../ui/ChatApp.js");
+  const app = render(
+    createElement(ChatApp, {
+      getToken: ensureValidToken,
+      agentId: agentInfo.id,
+      agentKey: agentInfo.key,
+      agentVersion: agentInfo.version,
+      businessDomain: chatArgs.businessDomain,
+      verbose: chatArgs.verbose,
+      initialConversationId: chatArgs.conversationId,
+      stream: chatArgs.stream ?? true,
+    })
+  );
+  await app.waitUntilExit();
+  return 0;
 }

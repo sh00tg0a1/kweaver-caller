@@ -8,6 +8,7 @@ import {
   extractText,
   fetchAgentInfo,
   sendChatRequest,
+  sendChatRequestStream,
 } from "../src/api/agent-chat.js";
 
 const originalFetch = globalThis.fetch;
@@ -241,6 +242,55 @@ test("sendChatRequest throws on HTTP error", { concurrency: false }, async () =>
         }),
       /HTTP 401/
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("sendChatRequestStream invokes onTextDelta with full text and returns ChatResult", {
+  concurrency: false,
+}, async () => {
+  const fullTexts: string[] = [];
+  const encoder = new TextEncoder();
+  const chunks = [
+    'data: {"key":["conversation_id"],"content":"conv_tui","action":"upsert"}\n',
+    'data: {"key":["message","text"],"content":"Hi","action":"append"}\n',
+    'data: {"key":["message","text"],"content":" there","action":"append"}\n',
+    'data: {"key":["message","text"],"content":"!","action":"append"}\n',
+  ];
+
+  globalThis.fetch = async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } }
+    );
+
+  try {
+    const result = await sendChatRequestStream(
+      {
+        baseUrl: "https://dip.aishu.cn",
+        accessToken: "token-abc",
+        agentId: "agent-xyz",
+        agentKey: "agent-key-xyz",
+        agentVersion: "v2",
+        query: "hello",
+        stream: true,
+      },
+      {
+        onTextDelta: (fullText) => fullTexts.push(fullText),
+      }
+    );
+
+    assert.equal(result.conversationId, "conv_tui");
+    assert.equal(result.text, "Hi there!");
+    assert.deepEqual(fullTexts, ["Hi", "Hi there", "Hi there!"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
