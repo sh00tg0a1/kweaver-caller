@@ -6,6 +6,7 @@ import Spinner from "ink-spinner";
 import { type ProgressItem, sendChatRequest, sendChatRequestStream } from "../api/agent-chat.js";
 
 import { formatHttpError } from "../auth/oauth.js";
+import { normalizeDisplayText } from "./display-text.js";
 import { MarkdownBlock } from "./MarkdownBlock.js";
 
 export interface TokenPayload {
@@ -32,26 +33,6 @@ interface Message {
   content: string;
   /** This agent message was preceded by middle_answer (tool progress). */
   hadProgress?: boolean;
-}
-
-function decodeHtmlEntities(s: string): string {
-  return s
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&nbsp;/g, " ");
-}
-
-function stripHtmlComments(s: string): string {
-  return s.replace(/<!--[\s\S]*?-->/g, "").trim();
-}
-
-function normalizeDisplayText(s: string): string {
-  return decodeHtmlEntities(stripHtmlComments(s));
 }
 
 const MIDDLE_ANSWER_MAX_LINES = 5;
@@ -101,7 +82,7 @@ function getLinesForItem(item: ProgressItem, idx: number): string[] {
   } else {
     answerStr = item.result ?? "";
   }
-  if (answerStr) lines.push(...decodeHtmlEntities(answerStr).split("\n"));
+  if (answerStr) lines.push(...normalizeDisplayText(answerStr).split("\n"));
   return lines;
 }
 
@@ -303,7 +284,7 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
       );
       setMessages((prev: Message[]) => [
         ...prev,
-        { role: "agent", content: result.text, hadProgress },
+        { role: "agent", content: normalizeDisplayText(result.text), hadProgress },
       ]);
       if (result.conversationId) {
         setConversationId(result.conversationId);
@@ -354,7 +335,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
     streamFlushIntervalRef.current = setInterval(() => {
       const nextText = streamingBufferRef.current;
       const nextProgress = toolProgressBufferRef.current;
-      setStreamingContent((prev) => (nextText === prev ? prev : nextText));
+      const normalizedNextText = normalizeDisplayText(nextText);
+      setStreamingContent((prev) => (normalizedNextText === prev ? prev : normalizedNextText));
       setToolProgress((prev) =>
         prev.length !== nextProgress.length || prev.some((p, i) => p !== nextProgress[i])
           ? nextProgress
@@ -379,7 +361,7 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
           },
           {
             onTextDelta: (fullText) => {
-              streamingBufferRef.current = fullText;
+              streamingBufferRef.current = normalizeDisplayText(fullText);
             },
             onProgress: (progress) => {
               toolProgressBufferRef.current = progress;

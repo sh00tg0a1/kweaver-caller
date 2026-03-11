@@ -1,6 +1,7 @@
 import React, { Fragment, useMemo } from "react";
 import { Box, Text } from "ink";
 import { marked, type Token, type Tokens } from "marked";
+import { normalizeDisplayText } from "./display-text.js";
 
 function hasTokens(token: Token): token is Token & { tokens: Token[] } {
   return "tokens" in token && Array.isArray(token.tokens);
@@ -233,7 +234,7 @@ export interface MarkdownBlockProps {
 }
 
 export function MarkdownBlock({ content }: MarkdownBlockProps): React.JSX.Element {
-  const trimmed = content.trim();
+  const trimmed = normalizeDisplayText(content).trim();
   const tokens = useMemo(() => (trimmed ? marked.lexer(trimmed) : []), [trimmed]);
 
   if (!trimmed) {
