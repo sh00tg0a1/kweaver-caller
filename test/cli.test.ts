@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -18,6 +18,15 @@ import {
   parseCallArgs,
   stripSseDoneMarker,
 } from "../src/commands/call.js";
+import {
+  parseBknListArgs,
+  parseBknGetArgs,
+  parseBknCreateArgs,
+  parseBknUpdateArgs,
+  parseBknDeleteArgs,
+  formatSimpleBknList,
+} from "../src/commands/bkn.js";
+import { parseAgentListArgs, formatSimpleAgentList } from "../src/commands/agent.js";
 import { parseTokenArgs } from "../src/commands/token.js";
 import {
   buildAuthorizationUrl,
@@ -138,6 +147,26 @@ test("run context-loader shows subcommand help", async () => {
 
 test("run context-loader --help shows subcommand help", async () => {
   assert.equal(await run(["context-loader", "--help"]), 0);
+});
+
+test("run context-loader help includes standard MCP short commands", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    await run(["context-loader"]);
+    const help = lines.join("\n");
+    assert.ok(help.includes("resource <uri>"), "help should include resource");
+    assert.ok(help.includes("templates"), "help should include templates");
+    assert.ok(help.includes("prompts"), "help should include prompts");
+    assert.ok(help.includes("prompt <name>"), "help should include prompt");
+    assert.ok(help.includes("tools/list"), "help should map tools to tools/list");
+    assert.ok(help.includes("resources/list"), "help should map resources to resources/list");
+  } finally {
+    console.log = originalLog;
+  }
 });
 
 test("run context alias invokes context-loader", async () => {
@@ -547,4 +576,347 @@ test("formatVerboseRequest prints method url headers and body state", () => {
   assert.ok(lines.includes("  accept: application/json"));
   assert.ok(lines.includes("  x-business-domain: bd_public"));
   assert.ok(lines.includes("Body: empty"));
+});
+
+test("parseBknListArgs parses flags with defaults", () => {
+  const opts = parseBknListArgs([]);
+  assert.equal(opts.offset, 0);
+  assert.equal(opts.limit, 50);
+  assert.equal(opts.sort, "update_time");
+  assert.equal(opts.direction, "desc");
+  assert.equal(opts.businessDomain, "bd_public");
+  assert.equal(opts.pretty, false);
+  assert.equal(opts.verbose, false);
+});
+
+test("parseBknListArgs parses custom offset limit sort direction", () => {
+  const opts = parseBknListArgs([
+    "--limit",
+    "10",
+    "--offset",
+    "5",
+    "--sort",
+    "create_time",
+    "--direction",
+    "asc",
+    "--pretty",
+    "-bd",
+    "bd_enterprise",
+  ]);
+  assert.equal(opts.offset, 5);
+  assert.equal(opts.limit, 10);
+  assert.equal(opts.sort, "create_time");
+  assert.equal(opts.direction, "asc");
+  assert.equal(opts.businessDomain, "bd_enterprise");
+  assert.equal(opts.pretty, true);
+});
+
+test("parseBknListArgs parses optional name_pattern and tag filters", () => {
+  const opts = parseBknListArgs(["--name-pattern", "incident", "--tag", "prod", "--verbose"]);
+  assert.equal(opts.name_pattern, "incident");
+  assert.equal(opts.tag, "prod");
+  assert.equal(opts.verbose, true);
+});
+
+test("parseBknListArgs throws on unknown flag", () => {
+  assert.throws(
+    () => parseBknListArgs(["--unknown"]),
+    /Unsupported bkn list argument: --unknown/
+  );
+});
+
+test("parseBknGetArgs parses kn-id stats export and pretty", () => {
+  const opts = parseBknGetArgs(["kn-123", "--stats", "--export", "--pretty", "-bd", "bd_enterprise"]);
+  assert.equal(opts.knId, "kn-123");
+  assert.equal(opts.stats, true);
+  assert.equal(opts.export, true);
+  assert.equal(opts.pretty, true);
+  assert.equal(opts.businessDomain, "bd_enterprise");
+});
+
+test("parseBknGetArgs requires kn-id", () => {
+  assert.throws(() => parseBknGetArgs([]), /Missing kn-id/);
+});
+
+test("parseBknCreateArgs parses flag-based body and query params", () => {
+  const opts = parseBknCreateArgs([
+    "--name",
+    "Incident Network",
+    "--comment",
+    "core network",
+    "--tags",
+    "prod,incident",
+    "--icon",
+    "bolt",
+    "--color",
+    "#fff000",
+    "--branch",
+    "main",
+    "--base-branch",
+    "",
+    "--import-mode",
+    "overwrite",
+    "--validate-dependency",
+    "false",
+    "--pretty",
+    "-bd",
+    "bd_enterprise",
+  ]);
+
+  const body = JSON.parse(opts.body) as Record<string, unknown>;
+  assert.equal(body.name, "Incident Network");
+  assert.equal(body.comment, "core network");
+  assert.deepEqual(body.tags, ["prod", "incident"]);
+  assert.equal(body.icon, "bolt");
+  assert.equal(body.color, "#fff000");
+  assert.equal(body.branch, "main");
+  assert.equal(body.base_branch, "");
+  assert.equal(opts.import_mode, "overwrite");
+  assert.equal(opts.validate_dependency, false);
+  assert.equal(opts.pretty, true);
+  assert.equal(opts.businessDomain, "bd_enterprise");
+});
+
+test("parseBknCreateArgs reads --body-file and rejects mixed flags", () => {
+  const dir = createConfigDir();
+  const bodyFile = join(dir, "kn-create.json");
+  writeFileSync(bodyFile, JSON.stringify({ name: "Network", branch: "main", base_branch: "" }));
+
+  const opts = parseBknCreateArgs(["--body-file", bodyFile]);
+  assert.equal(opts.body, '{"name":"Network","branch":"main","base_branch":""}');
+
+  assert.throws(
+    () => parseBknCreateArgs(["--body-file", bodyFile, "--name", "Mixed"]),
+    /Cannot use --body-file together/
+  );
+});
+
+test("parseBknUpdateArgs parses kn-id and body flags", () => {
+  const opts = parseBknUpdateArgs([
+    "kn-123",
+    "--name",
+    "Updated Network",
+    "--comment",
+    "updated",
+    "--tags",
+    "one,two",
+    "--branch",
+    "main",
+    "--base-branch",
+    "",
+    "--pretty",
+  ]);
+
+  assert.equal(opts.knId, "kn-123");
+  assert.equal(opts.pretty, true);
+  assert.deepEqual(JSON.parse(opts.body), {
+    name: "Updated Network",
+    comment: "updated",
+    tags: ["one", "two"],
+    branch: "main",
+    base_branch: "",
+  });
+});
+
+test("parseBknUpdateArgs requires kn-id and name when not using body file", () => {
+  assert.throws(() => parseBknUpdateArgs([]), /Missing kn-id/);
+  assert.throws(() => parseBknUpdateArgs(["kn-123"]), /--name is required/);
+});
+
+test("parseBknDeleteArgs parses kn-id and biz-domain", () => {
+  const opts = parseBknDeleteArgs(["kn-123", "-bd", "bd_enterprise"]);
+  assert.equal(opts.knId, "kn-123");
+  assert.equal(opts.businessDomain, "bd_enterprise");
+});
+
+test("parseBknDeleteArgs requires kn-id", () => {
+  assert.throws(() => parseBknDeleteArgs([]), /Missing kn-id/);
+});
+
+test("parseAgentListArgs parses flags with defaults", () => {
+  const opts = parseAgentListArgs([]);
+  assert.equal(opts.name, "");
+  assert.equal(opts.size, 48);
+  assert.equal(opts.pagination_marker_str, "");
+  assert.equal(opts.category_id, "");
+  assert.equal(opts.custom_space_id, "");
+  assert.equal(opts.is_to_square, 1);
+  assert.equal(opts.businessDomain, "bd_public");
+  assert.equal(opts.pretty, false);
+  assert.equal(opts.verbose, false);
+});
+
+test("parseAgentListArgs parses custom name size and body fields", () => {
+  const opts = parseAgentListArgs([
+    "--name",
+    "my-agent",
+    "--size",
+    "20",
+    "--pagination-marker",
+    "marker-xyz",
+    "--category-id",
+    "cat-1",
+    "--custom-space-id",
+    "space-1",
+    "--is-to-square",
+    "0",
+    "--verbose",
+    "--pretty",
+    "-bd",
+    "bd_enterprise",
+  ]);
+  assert.equal(opts.name, "my-agent");
+  assert.equal(opts.size, 20);
+  assert.equal(opts.pagination_marker_str, "marker-xyz");
+  assert.equal(opts.category_id, "cat-1");
+  assert.equal(opts.custom_space_id, "space-1");
+  assert.equal(opts.is_to_square, 0);
+  assert.equal(opts.businessDomain, "bd_enterprise");
+  assert.equal(opts.pretty, true);
+  assert.equal(opts.verbose, true);
+});
+
+test("parseAgentListArgs throws on unknown flag", () => {
+  assert.throws(
+    () => parseAgentListArgs(["--unknown"]),
+    /Unsupported agent list argument: --unknown/
+  );
+});
+
+test("run bkn shows subcommand help", async () => {
+  assert.equal(await run(["bkn"]), 0);
+});
+
+test("run bkn --help shows subcommand help", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("list [options]"));
+    assert.ok(help.includes("export <kn-id>"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn get --help shows get options", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "get", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("Get knowledge network detail"));
+    assert.ok(help.includes("--stats"));
+    assert.ok(help.includes("--export"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn list --help shows verbose option", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "list", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("--verbose"));
+    assert.ok(!help.includes("--simple"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn create --help shows create options", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "create", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("--body-file"));
+    assert.ok(help.includes("--import-mode"));
+    assert.ok(help.includes("--validate-dependency"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run agent list --help shows list options", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["agent", "list", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("List published agents"));
+    assert.ok(help.includes("--name"));
+    assert.ok(help.includes("--size"));
+    assert.ok(help.includes("--verbose"));
+    assert.ok(help.includes("--pretty"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("formatSimpleBknList keeps only name id description", () => {
+  const output = formatSimpleBknList(
+    JSON.stringify({
+      entries: [
+        { id: "kn-1", name: "Network A", comment: "Desc A", extra: true },
+        { id: "kn-2", name: "Network B" },
+      ],
+      total_count: 2,
+    }),
+    true
+  );
+
+  assert.equal(
+    output,
+    JSON.stringify(
+      [
+        { name: "Network A", id: "kn-1", description: "Desc A" },
+        { name: "Network B", id: "kn-2", description: "" },
+      ],
+      null,
+      2
+    )
+  );
+});
+
+test("formatSimpleAgentList keeps only name id description", () => {
+  const output = formatSimpleAgentList(
+    JSON.stringify({
+      entries: [
+        { id: "agent-1", name: "Agent A", description: "Desc A", extra: true },
+        { id: "agent-2", name: "Agent B", comment: "Desc B" },
+      ],
+    }),
+    true
+  );
+
+  assert.equal(
+    output,
+    JSON.stringify(
+      [
+        { name: "Agent A", id: "agent-1", description: "Desc A" },
+        { name: "Agent B", id: "agent-2", description: "Desc B" },
+      ],
+      null,
+      2
+    )
+  );
 });

@@ -1,5 +1,174 @@
-import { formatHttpError } from "../auth/oauth.js";
+import { ensureValidToken, formatHttpError } from "../auth/oauth.js";
 import { runAgentChatCommand } from "./agent-chat.js";
+import { listAgents } from "../api/agent-list.js";
+import { formatCallOutput } from "./call.js";
+
+export interface AgentListOptions {
+  name: string;
+  size: number;
+  pagination_marker_str: string;
+  category_id: string;
+  custom_space_id: string;
+  is_to_square: number;
+  businessDomain: string;
+  pretty: boolean;
+  verbose: boolean;
+}
+
+interface SimpleListItem {
+  name: string;
+  id: string;
+  description: string;
+}
+
+function readStringField(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): string {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+function extractListEntries(data: unknown): Record<string, unknown>[] {
+  if (Array.isArray(data)) {
+    return data.filter(
+      (entry): entry is Record<string, unknown> =>
+        typeof entry === "object" && entry !== null && !Array.isArray(entry)
+    );
+  }
+
+  if (typeof data !== "object" || data === null) {
+    return [];
+  }
+
+  const record = data as Record<string, unknown>;
+  for (const key of ["entries", "items", "list", "records", "data"]) {
+    const candidate = record[key];
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (entry): entry is Record<string, unknown> =>
+          typeof entry === "object" && entry !== null && !Array.isArray(entry)
+      );
+    }
+  }
+
+  if (typeof record.data === "object" && record.data !== null) {
+    return extractListEntries(record.data);
+  }
+
+  return [];
+}
+
+export function formatSimpleAgentList(text: string, pretty: boolean): string {
+  const parsed = JSON.parse(text) as unknown;
+  const entries = extractListEntries(parsed);
+  const simplified: SimpleListItem[] = entries.map((entry) => ({
+    name: readStringField(entry, "name", "agent_name", "title"),
+    id: readStringField(entry, "id", "agent_id", "key"),
+    description: readStringField(entry, "description", "comment", "summary", "intro"),
+  }));
+  return JSON.stringify(simplified, null, pretty ? 2 : 0);
+}
+
+export function parseAgentListArgs(args: string[]): AgentListOptions {
+  let name = "";
+  let size = 48;
+  let pagination_marker_str = "";
+  let category_id = "";
+  let custom_space_id = "";
+  let is_to_square = 1;
+  let businessDomain = "bd_public";
+  let pretty = false;
+  let verbose = false;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+
+    if (arg === "--help" || arg === "-h") {
+      throw new Error("help");
+    }
+
+    if (arg === "--name") {
+      name = args[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--size") {
+      size = parseInt(args[i + 1] ?? "48", 10);
+      if (Number.isNaN(size) || size < 1) size = 48;
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--pagination-marker") {
+      pagination_marker_str = args[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--category-id") {
+      category_id = args[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--custom-space-id") {
+      custom_space_id = args[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--is-to-square") {
+      is_to_square = parseInt(args[i + 1] ?? "1", 10);
+      if (Number.isNaN(is_to_square)) is_to_square = 1;
+      i += 1;
+      continue;
+    }
+
+    if (arg === "-bd" || arg === "--biz-domain") {
+      businessDomain = args[i + 1] ?? "bd_public";
+      if (!businessDomain || businessDomain.startsWith("-")) {
+        throw new Error("Missing value for biz-domain flag");
+      }
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--pretty") {
+      pretty = true;
+      continue;
+    }
+
+    if (arg === "--verbose" || arg === "-v") {
+      verbose = true;
+      continue;
+    }
+
+    if (arg === "--simple") {
+      continue;
+    }
+
+    throw new Error(`Unsupported agent list argument: ${arg}`);
+  }
+
+  return {
+    name,
+    size,
+    pagination_marker_str,
+    category_id,
+    custom_space_id,
+    is_to_square,
+    businessDomain,
+    pretty,
+    verbose,
+  };
+}
 
 export function runAgentCommand(args: string[]): Promise<number> {
   const [subcommand, ...rest] = args;
@@ -17,7 +186,8 @@ Subcommands:
        [--version value]             Resolve agent key from a specific version (default: v0)
        [--stream] [--no-stream]      Enable or disable streaming (default: stream in interactive, no-stream in -m mode)
        [--verbose]                   Print request details to stderr
-       [-bd|--biz-domain value]      Override x-business-domain (default: bd_public)`);
+       [-bd|--biz-domain value]      Override x-business-domain (default: bd_public)
+  list [options]                    List published agents`);
     return Promise.resolve(0);
   }
 
@@ -49,6 +219,77 @@ Options:
     return runAgentChatCommand(rest);
   }
 
+  if (subcommand === "list") {
+    if (rest.length === 1 && (rest[0] === "--help" || rest[0] === "-h")) {
+      console.log(`kweaverc agent list [options]
+
+List published agents from the agent-factory API.
+
+Options:
+  --name <text>             Filter by name
+  --size <n>                Page size (default: 48)
+  --pagination-marker <str>  Pagination marker for next page
+  --category-id <id>         Filter by category
+  --custom-space-id <id>    Filter by custom space
+  --is-to-square <0|1>      Is to square (default: 1)
+  --verbose, -v             Show full JSON response
+  -bd, --biz-domain <value>  Business domain (default: bd_public)
+  --pretty                  Pretty-print JSON output (applies to both modes)`);
+      return Promise.resolve(0);
+    }
+    return runAgentListCommand(rest);
+  }
+
   console.error(`Unknown agent subcommand: ${subcommand}`);
   return Promise.resolve(1);
+}
+
+async function runAgentListCommand(args: string[]): Promise<number> {
+  let options: AgentListOptions;
+  try {
+    options = parseAgentListArgs(args);
+  } catch (error) {
+    if (error instanceof Error && error.message === "help") {
+      console.log(`kweaverc agent list [options]
+
+List published agents from the agent-factory API.
+
+Options:
+  --name <text>             Filter by name
+  --size <n>                Page size (default: 48)
+  --pagination-marker <str>  Pagination marker for next page
+  --category-id <id>         Filter by category
+  --custom-space-id <id>    Filter by custom space
+  --is-to-square <0|1>      Is to square (default: 1)
+  --verbose, -v             Show full JSON response
+  -bd, --biz-domain <value>  Business domain (default: bd_public)
+  --pretty                  Pretty-print JSON output (applies to both modes)`);
+      return 0;
+    }
+    console.error(formatHttpError(error));
+    return 1;
+  }
+
+  try {
+    const token = await ensureValidToken();
+    const body = await listAgents({
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      businessDomain: options.businessDomain,
+      name: options.name,
+      size: options.size,
+      pagination_marker_str: options.pagination_marker_str,
+      category_id: options.category_id,
+      custom_space_id: options.custom_space_id,
+      is_to_square: options.is_to_square,
+    });
+
+    if (body) {
+      console.log(options.verbose ? formatCallOutput(body, options.pretty) : formatSimpleAgentList(body, options.pretty));
+    }
+    return 0;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
 }

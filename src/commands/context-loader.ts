@@ -7,6 +7,12 @@ import {
   queryInstanceSubgraph,
   getLogicPropertiesValues,
   getActionInfo,
+  listTools,
+  listResources,
+  readResource,
+  listResourceTemplates,
+  listPrompts,
+  getPrompt,
 } from "../api/context-loader.js";
 import {
   addContextLoaderEntry,
@@ -59,6 +65,12 @@ Subcommands:
   config list                         List all configs and current
   config remove <name>                 Remove a config
   config show                         Show current config (knId + mcpUrl)
+  tools                               tools/list - list available tools
+  resources                           resources/list - list resources
+  resource <uri>                      resources/read - read resource by URI
+  templates                           resources/templates/list - list resource templates
+  prompts                             prompts/list - list prompts
+  prompt <name> [--args json]          prompts/get - get prompt by name
   kn-search <query> [--only-schema]    Layer 1: Search schema (object_types, relation_types, action_types)
   kn-schema-search <query> [--max N]   Layer 1: Discover candidate concepts
   query-object-instance <json>         Layer 2: Query instances (args as JSON)
@@ -89,6 +101,24 @@ Examples:
   }
 
   try {
+    if (subcommand === "tools") {
+      return await runListTools(options, rest, pretty);
+    }
+    if (subcommand === "resources") {
+      return await runListResources(options, rest, pretty);
+    }
+    if (subcommand === "resource") {
+      return await runReadResource(options, rest, pretty);
+    }
+    if (subcommand === "templates") {
+      return await runListTemplates(options, rest, pretty);
+    }
+    if (subcommand === "prompts") {
+      return await runListPrompts(options, rest, pretty);
+    }
+    if (subcommand === "prompt") {
+      return await runGetPrompt(options, rest, pretty);
+    }
     if (subcommand === "kn-search") {
       return await runKnSearch(options, rest, pretty);
     }
@@ -216,6 +246,116 @@ Subcommands:
 
   console.error(`Unknown config subcommand: ${action}`);
   return 1;
+}
+
+async function runListTools(
+  options: { mcpUrl: string; knId: string; accessToken: string },
+  args: string[],
+  pretty: boolean
+): Promise<number> {
+  let cursor: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    if ((args[i] === "--cursor" || args[i] === "-c") && args[i + 1]) {
+      cursor = args[i + 1];
+      i += 1;
+    }
+  }
+  const result = await listTools(options, cursor ? { cursor } : undefined);
+  console.log(formatOutput(result, pretty));
+  return 0;
+}
+
+async function runListResources(
+  options: { mcpUrl: string; knId: string; accessToken: string },
+  args: string[],
+  pretty: boolean
+): Promise<number> {
+  let cursor: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    if ((args[i] === "--cursor" || args[i] === "-c") && args[i + 1]) {
+      cursor = args[i + 1];
+      i += 1;
+    }
+  }
+  const result = await listResources(options, cursor ? { cursor } : undefined);
+  console.log(formatOutput(result, pretty));
+  return 0;
+}
+
+async function runReadResource(
+  options: { mcpUrl: string; knId: string; accessToken: string },
+  args: string[],
+  pretty: boolean
+): Promise<number> {
+  const uri = args.find((a) => !a.startsWith("-"));
+  if (!uri) {
+    console.error("Usage: kweaverc context-loader resource <uri>");
+    return 1;
+  }
+  const result = await readResource(options, uri);
+  console.log(formatOutput(result, pretty));
+  return 0;
+}
+
+async function runListTemplates(
+  options: { mcpUrl: string; knId: string; accessToken: string },
+  args: string[],
+  pretty: boolean
+): Promise<number> {
+  let cursor: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    if ((args[i] === "--cursor" || args[i] === "-c") && args[i + 1]) {
+      cursor = args[i + 1];
+      i += 1;
+    }
+  }
+  const result = await listResourceTemplates(options, cursor ? { cursor } : undefined);
+  console.log(formatOutput(result, pretty));
+  return 0;
+}
+
+async function runListPrompts(
+  options: { mcpUrl: string; knId: string; accessToken: string },
+  args: string[],
+  pretty: boolean
+): Promise<number> {
+  let cursor: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    if ((args[i] === "--cursor" || args[i] === "-c") && args[i + 1]) {
+      cursor = args[i + 1];
+      i += 1;
+    }
+  }
+  const result = await listPrompts(options, cursor ? { cursor } : undefined);
+  console.log(formatOutput(result, pretty));
+  return 0;
+}
+
+async function runGetPrompt(
+  options: { mcpUrl: string; knId: string; accessToken: string },
+  args: string[],
+  pretty: boolean
+): Promise<number> {
+  const name = args.find((a) => !a.startsWith("-"));
+  if (!name) {
+    console.error("Usage: kweaverc context-loader prompt <name> [--args json]");
+    return 1;
+  }
+  let promptArgs: Record<string, unknown> | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    if ((args[i] === "--args" || args[i] === "-a") && args[i + 1]) {
+      try {
+        promptArgs = JSON.parse(args[i + 1]) as Record<string, unknown>;
+      } catch {
+        console.error("Invalid --args JSON");
+        return 1;
+      }
+      i += 1;
+    }
+  }
+  const result = await getPrompt(options, name, promptArgs);
+  console.log(formatOutput(result, pretty));
+  return 0;
 }
 
 async function runKnSearch(

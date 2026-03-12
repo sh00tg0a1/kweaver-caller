@@ -7,6 +7,12 @@ import {
   validateInstanceIdentity,
   validateInstanceIdentities,
   knSearch,
+  listTools,
+  listResources,
+  readResource,
+  listResourceTemplates,
+  listPrompts,
+  getPrompt,
   type MissingInputParamsError,
 } from "../src/api/context-loader.js";
 
@@ -148,5 +154,135 @@ test("knSearch sends JSON-RPC request with correct structure", async () => {
     assert.equal(parsed.params.arguments.only_schema, true);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+function installMcpListFetchMock(
+  method: string,
+  result: unknown
+): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const body = (init as RequestInit)?.body as string;
+    const parsed = body ? (JSON.parse(body) as { method?: string }) : {};
+    if (parsed.method === "initialize") {
+      return new Response(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "2024-11-05", capabilities: {} } }),
+        { headers: { "Content-Type": "application/json", "MCP-Session-Id": "session-id-123" } }
+      );
+    }
+    if (parsed.method === "notifications/initialized") {
+      return new Response("", { status: 200 });
+    }
+    if (parsed.method === method) {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
+test("listTools sends tools/list and returns result", async () => {
+  const restore = installMcpListFetchMock("tools/list", {
+    tools: [{ name: "kn_search", description: "Search knowledge network" }],
+  });
+  try {
+    const result = await listTools(
+      { mcpUrl: "https://mcp.example.com/mcp", knId: "kn-1", accessToken: "tok" }
+    ) as { tools?: unknown[] };
+    assert.ok(result.tools);
+    assert.equal(result.tools.length, 1);
+    assert.equal(result.tools[0].name, "kn_search");
+  } finally {
+    restore();
+  }
+});
+
+test("listResources sends resources/list and returns result", async () => {
+  const restore = installMcpListFetchMock("resources/list", {
+    resources: [{ uri: "file:///doc.txt", name: "doc" }],
+  });
+  try {
+    const result = await listResources(
+      { mcpUrl: "https://mcp.example.com/mcp", knId: "kn-1", accessToken: "tok" }
+    ) as { resources?: unknown[] };
+    assert.ok(result.resources);
+    assert.equal(result.resources.length, 1);
+    assert.equal(result.resources[0].uri, "file:///doc.txt");
+  } finally {
+    restore();
+  }
+});
+
+test("readResource sends resources/read with uri", async () => {
+  const restore = installMcpListFetchMock("resources/read", {
+    contents: [{ uri: "file:///doc.txt", mimeType: "text/plain", text: "hello" }],
+  });
+  try {
+    const result = await readResource(
+      { mcpUrl: "https://mcp.example.com/mcp", knId: "kn-1", accessToken: "tok" },
+      "file:///doc.txt"
+    ) as { contents?: unknown[] };
+    assert.ok(result.contents);
+    assert.equal(result.contents.length, 1);
+    assert.equal(result.contents[0].text, "hello");
+  } finally {
+    restore();
+  }
+});
+
+test("listResourceTemplates sends resources/templates/list", async () => {
+  const restore = installMcpListFetchMock("resources/templates/list", {
+    resourceTemplates: [{ uriTemplate: "file:///docs/{id}" }],
+  });
+  try {
+    const result = await listResourceTemplates(
+      { mcpUrl: "https://mcp.example.com/mcp", knId: "kn-1", accessToken: "tok" }
+    ) as { resourceTemplates?: unknown[] };
+    assert.ok(result.resourceTemplates);
+    assert.equal(result.resourceTemplates.length, 1);
+    assert.equal(result.resourceTemplates[0].uriTemplate, "file:///docs/{id}");
+  } finally {
+    restore();
+  }
+});
+
+test("listPrompts sends prompts/list and returns result", async () => {
+  const restore = installMcpListFetchMock("prompts/list", {
+    prompts: [{ name: "code_review", description: "Review code" }],
+  });
+  try {
+    const result = await listPrompts(
+      { mcpUrl: "https://mcp.example.com/mcp", knId: "kn-1", accessToken: "tok" }
+    ) as { prompts?: unknown[] };
+    assert.ok(result.prompts);
+    assert.equal(result.prompts.length, 1);
+    assert.equal(result.prompts[0].name, "code_review");
+  } finally {
+    restore();
+  }
+});
+
+test("getPrompt sends prompts/get with name and optional arguments", async () => {
+  const restore = installMcpListFetchMock("prompts/get", {
+    description: "Review the given code",
+    messages: [{ role: "user", content: { type: "text", text: "Review: def hello(): pass" } }],
+  });
+  try {
+    const result = await getPrompt(
+      { mcpUrl: "https://mcp.example.com/mcp", knId: "kn-1", accessToken: "tok" },
+      "code_review",
+      { code: "def hello(): pass" }
+    ) as { description?: string; messages?: unknown[] };
+    assert.ok(result.description);
+    assert.ok(result.messages);
+  } finally {
+    restore();
   }
 });

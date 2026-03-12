@@ -215,6 +215,47 @@ export function validateInstanceIdentities(v: unknown): void {
 
 let requestId = 0;
 
+/** Call a generic MCP JSON-RPC method (e.g. tools/list, resources/list). Returns result as-is. */
+async function callMcpMethod(
+  options: ContextLoaderCallOptions,
+  method: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
+  const sessionId = await ensureSession(options);
+  const id = (requestId += 1);
+
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    method,
+    params: Object.keys(params).length > 0 ? params : undefined,
+    id,
+  });
+
+  const { body: responseBody } = await fetchTextOrThrow(options.mcpUrl, {
+    method: "POST",
+    headers: buildHeaders(options, sessionId),
+    body,
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(responseBody);
+  } catch {
+    throw new Error(`Context-loader returned invalid JSON: ${responseBody.slice(0, 200)}`);
+  }
+
+  const rpc = parsed as { result?: unknown; error?: { code: number; message: string } };
+  if (rpc.error) {
+    throw new Error(`Context-loader error: ${rpc.error.message}`);
+  }
+
+  if (rpc.result !== undefined) {
+    return rpc.result;
+  }
+
+  throw new Error("Context-loader returned no result");
+}
+
 async function callTool(
   options: ContextLoaderCallOptions,
   toolName: string,
@@ -341,4 +382,53 @@ export async function getActionInfo(
 ): Promise<unknown> {
   validateInstanceIdentity(args._instance_identity, "_instance_identity");
   return callTool(options, "get_action_info", { ...args });
+}
+
+/** MCP tools/list. Returns list of available tools. */
+export async function listTools(
+  options: ContextLoaderCallOptions,
+  params?: { cursor?: string }
+): Promise<unknown> {
+  return callMcpMethod(options, "tools/list", params ? { cursor: params.cursor } : {});
+}
+
+/** MCP resources/list. Returns list of available resources. */
+export async function listResources(
+  options: ContextLoaderCallOptions,
+  params?: { cursor?: string }
+): Promise<unknown> {
+  return callMcpMethod(options, "resources/list", params ? { cursor: params.cursor } : {});
+}
+
+/** MCP resources/read. Returns resource content by URI. */
+export async function readResource(
+  options: ContextLoaderCallOptions,
+  uri: string
+): Promise<unknown> {
+  return callMcpMethod(options, "resources/read", { uri });
+}
+
+/** MCP resources/templates/list. Returns list of resource templates. */
+export async function listResourceTemplates(
+  options: ContextLoaderCallOptions,
+  params?: { cursor?: string }
+): Promise<unknown> {
+  return callMcpMethod(options, "resources/templates/list", params ? { cursor: params.cursor } : {});
+}
+
+/** MCP prompts/list. Returns list of available prompts. */
+export async function listPrompts(
+  options: ContextLoaderCallOptions,
+  params?: { cursor?: string }
+): Promise<unknown> {
+  return callMcpMethod(options, "prompts/list", params ? { cursor: params.cursor } : {});
+}
+
+/** MCP prompts/get. Returns prompt by name with optional arguments. */
+export async function getPrompt(
+  options: ContextLoaderCallOptions,
+  name: string,
+  args?: Record<string, unknown>
+): Promise<unknown> {
+  return callMcpMethod(options, "prompts/get", args ? { name, arguments: args } : { name });
 }
