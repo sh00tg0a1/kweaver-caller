@@ -585,6 +585,7 @@ test("parseBknListArgs parses flags with defaults", () => {
   assert.equal(opts.sort, "update_time");
   assert.equal(opts.direction, "desc");
   assert.equal(opts.businessDomain, "bd_public");
+  assert.equal(opts.detail, false);
   assert.equal(opts.pretty, false);
   assert.equal(opts.verbose, false);
 });
@@ -612,9 +613,10 @@ test("parseBknListArgs parses custom offset limit sort direction", () => {
 });
 
 test("parseBknListArgs parses optional name_pattern and tag filters", () => {
-  const opts = parseBknListArgs(["--name-pattern", "incident", "--tag", "prod", "--verbose"]);
+  const opts = parseBknListArgs(["--name-pattern", "incident", "--tag", "prod", "--detail", "--verbose"]);
   assert.equal(opts.name_pattern, "incident");
   assert.equal(opts.tag, "prod");
+  assert.equal(opts.detail, true);
   assert.equal(opts.verbose, true);
 });
 
@@ -798,6 +800,10 @@ test("run bkn --help shows subcommand help", async () => {
     const help = lines.join("\n");
     assert.ok(help.includes("list [options]"));
     assert.ok(help.includes("export <kn-id>"));
+    assert.ok(help.includes("object-type query"));
+    assert.ok(help.includes("subgraph"));
+    assert.ok(help.includes("action-type"));
+    assert.ok(help.includes("action-log"));
   } finally {
     console.log = originalLog;
   }
@@ -829,6 +835,7 @@ test("run bkn list --help shows verbose option", async () => {
   try {
     assert.equal(await run(["bkn", "list", "--help"]), 0);
     const help = lines.join("\n");
+    assert.ok(help.includes("--detail"));
     assert.ok(help.includes("--verbose"));
     assert.ok(!help.includes("--simple"));
   } finally {
@@ -848,6 +855,90 @@ test("run bkn create --help shows create options", async () => {
     assert.ok(help.includes("--body-file"));
     assert.ok(help.includes("--import-mode"));
     assert.ok(help.includes("--validate-dependency"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn object-type --help shows query and properties usage", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "object-type", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("object-type query"));
+    assert.ok(help.includes("object-type properties"));
+    assert.ok(help.includes("<kn-id>"));
+    assert.ok(help.includes("<ot-id>"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn subgraph --help shows usage", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "subgraph", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("subgraph <kn-id>"));
+    assert.ok(help.includes("'<json>'"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn action-type --help shows query and execute with side effects note", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "action-type", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("action-type query"));
+    assert.ok(help.includes("action-type execute"));
+    assert.ok(help.includes("side effects"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn action-execution --help shows get usage", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "action-execution", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("action-execution get"));
+    assert.ok(help.includes("<execution-id>"));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test("run bkn action-log --help shows list get cancel", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    assert.equal(await run(["bkn", "action-log", "--help"]), 0);
+    const help = lines.join("\n");
+    assert.ok(help.includes("action-log list"));
+    assert.ok(help.includes("action-log get"));
+    assert.ok(help.includes("action-log cancel"));
   } finally {
     console.log = originalLog;
   }
@@ -890,6 +981,32 @@ test("formatSimpleBknList keeps only name id description", () => {
       [
         { name: "Network A", id: "kn-1", description: "Desc A" },
         { name: "Network B", id: "kn-2", description: "" },
+      ],
+      null,
+      2
+    )
+  );
+});
+
+test("formatSimpleBknList can include detail in simplified output", () => {
+  const output = formatSimpleBknList(
+    JSON.stringify({
+      entries: [
+        { id: "kn-1", name: "Network A", comment: "Desc A", detail: "Detail A", extra: true },
+        { id: "kn-2", name: "Network B", detail: 123 },
+      ],
+      total_count: 2,
+    }),
+    true,
+    true
+  );
+
+  assert.equal(
+    output,
+    JSON.stringify(
+      [
+        { name: "Network A", id: "kn-1", description: "Desc A", detail: "Detail A" },
+        { name: "Network B", id: "kn-2", description: "", detail: "" },
       ],
       null,
       2

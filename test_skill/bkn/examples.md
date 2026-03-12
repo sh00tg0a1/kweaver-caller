@@ -4,7 +4,9 @@
 
 ```bash
 kweaverc bkn list --pretty
+kweaverc bkn list --detail --pretty
 kweaverc bkn list --name-pattern incident --tag prod --sort name --direction asc --pretty
+kweaverc bkn list --verbose --pretty
 ```
 
 ## 查看详情
@@ -71,4 +73,62 @@ kweaverc bkn update kn_system_incident_event_network --body-file ./network-updat
 
 ```bash
 kweaverc bkn delete kn_system_incident_event_network
+```
+
+## BKN 查询（ontology-query）
+
+对象实例查询：
+
+```bash
+kweaverc bkn object-type query kn_xxx pod '{"condition":{"operation":"and","sub_conditions":[]},"limit":10}' --pretty
+```
+
+对象属性查询：
+
+```bash
+kweaverc bkn object-type properties kn_xxx pod '{"_instance_identities":[{"pod_ip":"192.168.1.1"}],"properties":["pod_name","pod_status"]}' --pretty
+```
+
+子图查询：
+
+```bash
+kweaverc bkn subgraph kn_xxx '{"relation_type_paths":[{"object_types":[{"id":"comment","condition":{"operation":"and","sub_conditions":[]},"limit":10}],"relation_types":[]}]}' --pretty
+```
+
+行动查询：
+
+```bash
+kweaverc bkn action-type query kn_xxx restart_pod '{"_instance_identities":[{"pod_ip":"192.168.1.1"}]}' --pretty
+```
+
+## BKN Action（有副作用）
+
+执行行动：
+
+```bash
+kweaverc bkn action-type execute kn_xxx restart_pod '{"_instance_identities":[{"pod_ip":"192.168.1.1"}]}' --pretty
+```
+
+获取执行状态：
+
+```bash
+kweaverc bkn action-execution get kn_xxx ex_abc123 --pretty
+```
+
+列出执行日志：
+
+```bash
+kweaverc bkn action-log list kn_xxx --limit 20 --need-total true --pretty
+```
+
+获取单条日志：
+
+```bash
+kweaverc bkn action-log get kn_xxx log_456 --pretty
+```
+
+取消执行：
+
+```bash
+kweaverc bkn action-log cancel kn_xxx log_789 --pretty
 ```

@@ -1,17 +1,19 @@
 ---
 name: bkn
-description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list/get/create/update/delete/export/stats。Use when the user wants to查询、创建、修改、删除业务知识网络，或提到 ontology-manager 的 knowledge-network 接口。
+description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list/get/create/update/delete/export/stats，以及 ontology-query 的对象查询、子图、属性、行动查询与执行。Use when the user wants to查询、创建、修改、删除业务知识网络，或直接调用 ontology-query 接口。
 ---
 
 # BKN
 
-用于通过 `kweaverc` 管理业务知识网络。对外命令统一叫 `bkn`，底层接口术语是 ontology / knowledge-network。
+用于通过 `kweaverc` 管理业务知识网络。对外命令统一叫 `bkn`，底层接口术语是 ontology / knowledge-network / ontology-query。
 
 默认只依赖本文件即可完成调用。仅当你需要完整示例命令时，再阅读 [examples.md](examples.md)。
 
 ## 适用范围
 
-本 skill 只覆盖知识网络本身的 P0 管理能力：
+本 skill 覆盖三层能力：
+
+**BKN 管理**（ontology-manager）：
 
 - `bkn list`
 - `bkn get`
@@ -21,12 +23,25 @@ description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list
 - `bkn export`
 - `bkn stats`
 
+**BKN 查询**（ontology-query 只读）：
+
+- `bkn object-type query <kn-id> <ot-id> '<json>'`
+- `bkn object-type properties <kn-id> <ot-id> '<json>'`
+- `bkn subgraph <kn-id> '<json>'`
+- `bkn action-type query <kn-id> <at-id> '<json>'`
+
+**BKN Action**（ontology-query 有副作用）：
+
+- `bkn action-type execute <kn-id> <at-id> '<json>'`
+- `bkn action-execution get <kn-id> <execution-id>`
+- `bkn action-log list <kn-id> [options]`
+- `bkn action-log get <kn-id> <log-id>`
+- `bkn action-log cancel <kn-id> <log-id>`
+
 不覆盖：
 
-- `bkn object-type ...`
 - `bkn relation-type ...`
-- `bkn action-type ...`
-- context-loader MCP 检索流程
+- context-loader MCP 检索流程（schema 分层检索用 context-loader）
 
 ## 使用前提
 
@@ -45,10 +60,19 @@ description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list
 | `kweaverc bkn delete <kn-id>` | 删除网络 |
 | `kweaverc bkn export <kn-id> [options]` | 导出网络定义 |
 | `kweaverc bkn stats <kn-id> [options]` | 查看网络统计 |
+| `kweaverc bkn object-type query <kn-id> <ot-id> '<json>'` | 对象实例查询 |
+| `kweaverc bkn object-type properties <kn-id> <ot-id> '<json>'` | 对象属性查询 |
+| `kweaverc bkn subgraph <kn-id> '<json>'` | 子图查询 |
+| `kweaverc bkn action-type query <kn-id> <at-id> '<json>'` | 行动信息查询 |
+| `kweaverc bkn action-type execute <kn-id> <at-id> '<json>'` | 执行行动（有副作用） |
+| `kweaverc bkn action-execution get <kn-id> <execution-id>` | 获取执行状态 |
+| `kweaverc bkn action-log list <kn-id> [options]` | 列出执行日志 |
+| `kweaverc bkn action-log get <kn-id> <log-id>` | 获取单条日志 |
+| `kweaverc bkn action-log cancel <kn-id> <log-id>` | 取消执行（有副作用） |
 
 ## 接口映射
 
-| CLI 命令 | Ontology 接口 |
+| CLI 命令 | 接口 |
 | --- | --- |
 | `bkn list` | `GET /api/ontology-manager/v1/knowledge-networks` |
 | `bkn get` | `GET /api/ontology-manager/v1/knowledge-networks/{kn_id}` |
@@ -57,6 +81,15 @@ description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list
 | `bkn delete` | `DELETE /api/ontology-manager/v1/knowledge-networks/{kn_id}` |
 | `bkn export` | `GET /api/ontology-manager/v1/knowledge-networks/{kn_id}?mode=export` |
 | `bkn stats` | `GET /api/ontology-manager/v1/knowledge-networks/{kn_id}?include_statistics=true` |
+| `bkn object-type query` | `POST /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}` |
+| `bkn object-type properties` | `POST /api/ontology-query/v1/knowledge-networks/{kn_id}/object-types/{ot_id}/properties` |
+| `bkn subgraph` | `POST /api/ontology-query/v1/knowledge-networks/{kn_id}/subgraph` |
+| `bkn action-type query` | `POST /api/ontology-query/v1/knowledge-networks/{kn_id}/action-types/{at_id}/` |
+| `bkn action-type execute` | `POST /api/ontology-query/v1/knowledge-networks/{kn_id}/action-types/{at_id}/execute` |
+| `bkn action-execution get` | `GET /api/ontology-query/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}` |
+| `bkn action-log list` | `GET /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs` |
+| `bkn action-log get` | `GET /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}` |
+| `bkn action-log cancel` | `POST /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}/cancel` |
 
 ## 推荐工作流
 
@@ -68,6 +101,12 @@ description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list
 kweaverc bkn list --pretty
 ```
 
+默认返回简化列表，只包含 `name`、`id`、`description`。如果还想在简化结果里一起看 `detail` 字段，使用：
+
+```bash
+kweaverc bkn list --detail --pretty
+```
+
 常用筛选参数：
 
 - `--offset`
@@ -76,6 +115,8 @@ kweaverc bkn list --pretty
 - `--direction asc|desc`
 - `--name-pattern <text>`
 - `--tag <text>`
+- `--detail`
+- `--verbose` / `-v`
 - `-bd, --biz-domain <value>`
 - `--pretty`
 
@@ -134,6 +175,36 @@ kweaverc bkn delete <kn-id>
 
 - 会删除该知识网络及其下对象类、关系类、行动类和概念分组
 
+### 5. BKN 查询（ontology-query 只读）
+
+当用户需要直接调用 ontology-query 接口查询对象、子图、属性或行动信息时：
+
+```bash
+kweaverc bkn object-type query <kn-id> <ot-id> '{"condition":{"operation":"and","sub_conditions":[]},"limit":10}' --pretty
+kweaverc bkn object-type properties <kn-id> <ot-id> '{"_instance_identities":[],"properties":["name"]}' --pretty
+kweaverc bkn subgraph <kn-id> '{"relation_type_paths":[]}' --pretty
+kweaverc bkn action-type query <kn-id> <at-id> '{"_instance_identities":[{"id":"1"}]}' --pretty
+```
+
+JSON 格式详见 `ref/ontology/ontology-query.yaml`。
+
+### 6. BKN Action（有副作用）
+
+`action-type execute` 和 `action-log cancel` 会触发真实执行或取消，**仅在用户明确请求时使用**：
+
+```bash
+kweaverc bkn action-type execute <kn-id> <at-id> '{"_instance_identities":[{"id":"1"}]}' --pretty
+kweaverc bkn action-execution get <kn-id> <execution-id> --pretty
+kweaverc bkn action-log list <kn-id> --limit 20 --pretty
+kweaverc bkn action-log get <kn-id> <log-id> --pretty
+kweaverc bkn action-log cancel <kn-id> <log-id> --pretty
+```
+
+## 与 context-loader 的边界
+
+- **bkn**：直接调用 ontology-query 原生接口，适合已知 `kn_id`、`ot_id`、`at_id` 且需透传 JSON 的场景
+- **context-loader**：schema → 实例 → 逻辑属性/行动信息 的分层检索工作流，适合 Agent 化检索（需先 `kn-search` 发现 schema，再逐层调用）
+
 ## 处理用户请求时的默认策略
 
 - 用户说“看看有哪些 BKN”：
@@ -149,16 +220,23 @@ kweaverc bkn delete <kn-id>
 - 用户说“删除一个 BKN”：
   - 先确认这是明确请求
   - 再执行 `bkn delete`
+- 用户说“查对象实例/子图/属性/行动信息”且已知 `kn_id`、`ot_id` 等：
+  - 用 `bkn object-type query` / `bkn subgraph` / `bkn action-type query` 等
+- 用户说“执行某个行动”或“取消执行”：
+  - 仅在明确请求时执行 `bkn action-type execute` 或 `bkn action-log cancel`
 
 ## 输出与术语
 
 - 对用户说“BKN”即可
 - 提到接口或代码时，用“ontology-manager knowledge-network 接口”
+- `bkn list` 默认返回简化字段：`name`、`id`、`description`
+- `bkn list --detail` 会在简化输出中额外包含 `detail`
+- `bkn list --verbose` / `-v` 返回完整 JSON
 - 默认建议加 `--pretty`，便于阅读 JSON
 
 ## 相关文件
 
 - 主命令实现：`src/commands/bkn.ts`
-- API 封装：`src/api/knowledge-networks.ts`
-- 参考文档：`ref/ontology/ontology-manager-network.yaml`
+- API 封装：`src/api/knowledge-networks.ts`、`src/api/ontology-query.ts`
+- 参考文档：`ref/ontology/ontology-manager-network.yaml`、`ref/ontology/ontology-query.yaml`
 - 示例：`examples.md`

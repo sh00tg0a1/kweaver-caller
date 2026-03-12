@@ -33,7 +33,7 @@ Commands:
   token          Print the current access token, refreshing it first if needed
   call           Call an API with curl-style flags and auto-injected token headers
   agent          Chat with a KWeaver agent (agent chat <id>), list published agents (agent list)
-  bkn            Business knowledge network management (list/get/create/update/delete/export/stats)
+  bkn            Business knowledge network (list/get/create/update/delete/export/stats; object-type, subgraph, action-type, action-log)
   context-loader Call context-loader MCP (tools, resources, prompts; kn-search, query-*, etc.)
   help           Show this message`);
 }

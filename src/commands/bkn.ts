@@ -7,6 +7,17 @@ import {
   updateKnowledgeNetwork,
   deleteKnowledgeNetwork,
 } from "../api/knowledge-networks.js";
+import {
+  objectTypeQuery,
+  objectTypeProperties,
+  subgraph,
+  actionTypeQuery,
+  actionTypeExecute,
+  actionExecutionGet,
+  actionLogsList,
+  actionLogGet,
+  actionLogCancel,
+} from "../api/ontology-query.js";
 import { formatCallOutput } from "./call.js";
 
 export interface BknListOptions {
@@ -15,6 +26,7 @@ export interface BknListOptions {
   sort: string;
   direction: "asc" | "desc";
   businessDomain: string;
+  detail: boolean;
   pretty: boolean;
   verbose: boolean;
   name_pattern?: string;
@@ -25,15 +37,17 @@ interface SimpleListItem {
   name: string;
   id: string;
   description: string;
+  detail?: string;
 }
 
-export function formatSimpleBknList(text: string, pretty: boolean): string {
+export function formatSimpleBknList(text: string, pretty: boolean, includeDetail = false): string {
   const parsed = JSON.parse(text) as { entries?: Array<Record<string, unknown>> };
   const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
   const simplified: SimpleListItem[] = entries.map((entry) => ({
     name: typeof entry.name === "string" ? entry.name : "",
     id: typeof entry.id === "string" ? entry.id : "",
     description: typeof entry.comment === "string" ? entry.comment : "",
+    ...(includeDetail && { detail: typeof entry.detail === "string" ? entry.detail : "" }),
   }));
   return JSON.stringify(simplified, null, pretty ? 2 : 0);
 }
@@ -44,6 +58,7 @@ export function parseBknListArgs(args: string[]): BknListOptions {
   let sort = "update_time";
   let direction: "asc" | "desc" = "desc";
   let businessDomain = "bd_public";
+  let detail = false;
   let pretty = false;
   let verbose = false;
   let name_pattern: string | undefined;
@@ -109,6 +124,11 @@ export function parseBknListArgs(args: string[]): BknListOptions {
       continue;
     }
 
+    if (arg === "--detail") {
+      detail = true;
+      continue;
+    }
+
     if (arg === "--verbose" || arg === "-v") {
       verbose = true;
       continue;
@@ -121,7 +141,7 @@ export function parseBknListArgs(args: string[]): BknListOptions {
     throw new Error(`Unsupported bkn list argument: ${arg}`);
   }
 
-  return { offset, limit, sort, direction, businessDomain, pretty, verbose, name_pattern, tag };
+  return { offset, limit, sort, direction, businessDomain, detail, pretty, verbose, name_pattern, tag };
 }
 
 export interface BknGetOptions {
@@ -433,6 +453,15 @@ Subcommands:
   delete <kn-id>       Delete a knowledge network
   export <kn-id>       Export knowledge network (alias for get --export)
   stats <kn-id>        Get statistics (alias for get --stats)
+  object-type query <kn-id> <ot-id> '<json>'   Query object instances (ontology-query)
+  object-type properties <kn-id> <ot-id> '<json>'   Query object properties
+  subgraph <kn-id> '<json>'   Query subgraph
+  action-type query <kn-id> <at-id> '<json>'   Query action info
+  action-type execute <kn-id> <at-id> '<json>'   Execute action (has side effects)
+  action-execution get <kn-id> <execution-id>   Get execution status
+  action-log list <kn-id> [options]   List action execution logs
+  action-log get <kn-id> <log-id>   Get single execution log
+  action-log cancel <kn-id> <log-id>   Cancel running execution (has side effects)
 
 Use 'kweaverc bkn <subcommand> --help' for subcommand options.`;
 
@@ -472,8 +501,386 @@ export async function runBknCommand(args: string[]): Promise<number> {
     return runBknGetCommand([...(rest[0] ? [rest[0]] : []), "--stats", ...rest.slice(1)]);
   }
 
+  if (subcommand === "object-type") {
+    return runBknObjectTypeCommand(rest);
+  }
+
+  if (subcommand === "subgraph") {
+    return runBknSubgraphCommand(rest);
+  }
+
+  if (subcommand === "action-type") {
+    return runBknActionTypeCommand(rest);
+  }
+
+  if (subcommand === "action-execution") {
+    return runBknActionExecutionCommand(rest);
+  }
+
+  if (subcommand === "action-log") {
+    return runBknActionLogCommand(rest);
+  }
+
   console.error(`Unknown bkn subcommand: ${subcommand}`);
   return 1;
+}
+
+/** Parse common flags for ontology-query subcommands; returns { filteredArgs, pretty, businessDomain } */
+function parseOntologyQueryFlags(args: string[]): {
+  filteredArgs: string[];
+  pretty: boolean;
+  businessDomain: string;
+} {
+  let pretty = false;
+  let businessDomain = "bd_public";
+  const filteredArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      throw new Error("help");
+    }
+    if (arg === "--pretty") {
+      pretty = true;
+      continue;
+    }
+    if ((arg === "-bd" || arg === "--biz-domain") && args[i + 1]) {
+      businessDomain = args[i + 1];
+      i += 1;
+      continue;
+    }
+    filteredArgs.push(arg);
+  }
+  return { filteredArgs, pretty, businessDomain };
+}
+
+async function runBknObjectTypeCommand(args: string[]): Promise<number> {
+  const [action, ...rest] = args;
+  if (!action || action === "--help" || action === "-h") {
+    console.log(`kweaverc bkn object-type query <kn-id> <ot-id> '<json>' [--pretty] [-bd value]
+kweaverc bkn object-type properties <kn-id> <ot-id> '<json>' [--pretty] [-bd value]
+
+Query object types via ontology-query API. JSON body format see ref/ontology/ontology-query.yaml.`);
+    return 0;
+  }
+
+  let filteredArgs: string[];
+  let pretty: boolean;
+  let businessDomain: string;
+  try {
+    const parsed = parseOntologyQueryFlags(rest);
+    filteredArgs = parsed.filteredArgs;
+    pretty = parsed.pretty;
+    businessDomain = parsed.businessDomain;
+  } catch (error) {
+    if (error instanceof Error && error.message === "help") {
+      return 0;
+    }
+    throw error;
+  }
+
+  const [knId, otId, body] = filteredArgs;
+  if (!knId || !otId || !body) {
+    console.error(
+      "Usage: kweaverc bkn object-type query <kn-id> <ot-id> '<json>' [options]\n       kweaverc bkn object-type properties <kn-id> <ot-id> '<json>' [options]"
+    );
+    return 1;
+  }
+
+  try {
+    const token = await ensureValidToken();
+    const base = {
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      knId,
+      businessDomain,
+    };
+    const result =
+      action === "query"
+        ? await objectTypeQuery({ ...base, otId, body })
+        : action === "properties"
+          ? await objectTypeProperties({ ...base, otId, body })
+          : null;
+    if (!result) {
+      console.error(`Unknown object-type action: ${action}. Use query or properties.`);
+      return 1;
+    }
+    console.log(formatCallOutput(result, pretty));
+    return 0;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
+}
+
+async function runBknSubgraphCommand(args: string[]): Promise<number> {
+  let filteredArgs: string[];
+  let pretty: boolean;
+  let businessDomain: string;
+  try {
+    const parsed = parseOntologyQueryFlags(args);
+    filteredArgs = parsed.filteredArgs;
+    pretty = parsed.pretty;
+    businessDomain = parsed.businessDomain;
+  } catch (error) {
+    if (error instanceof Error && error.message === "help") {
+      console.log(`kweaverc bkn subgraph <kn-id> '<json>' [--pretty] [-bd value]
+
+Query subgraph via ontology-query API. JSON body format see ref/ontology/ontology-query.yaml.`);
+      return 0;
+    }
+    throw error;
+  }
+
+  const [knId, body] = filteredArgs;
+  if (!knId || !body) {
+    console.error("Usage: kweaverc bkn subgraph <kn-id> '<json>' [options]");
+    return 1;
+  }
+
+  try {
+    const token = await ensureValidToken();
+    const result = await subgraph({
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      knId,
+      body,
+      businessDomain,
+    });
+    console.log(formatCallOutput(result, pretty));
+    return 0;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
+}
+
+async function runBknActionTypeCommand(args: string[]): Promise<number> {
+  const [action, ...rest] = args;
+  if (!action || action === "--help" || action === "-h") {
+    console.log(`kweaverc bkn action-type query <kn-id> <at-id> '<json>' [--pretty] [-bd value]
+kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [--pretty] [-bd value]
+
+Query or execute actions. execute has side effects - only use when explicitly requested.`);
+    return 0;
+  }
+
+  let filteredArgs: string[];
+  let pretty: boolean;
+  let businessDomain: string;
+  try {
+    const parsed = parseOntologyQueryFlags(rest);
+    filteredArgs = parsed.filteredArgs;
+    pretty = parsed.pretty;
+    businessDomain = parsed.businessDomain;
+  } catch (error) {
+    if (error instanceof Error && error.message === "help") {
+      return 0;
+    }
+    throw error;
+  }
+
+  const [knId, atId, body] = filteredArgs;
+  if (!knId || !atId || !body) {
+    console.error(
+      "Usage: kweaverc bkn action-type query <kn-id> <at-id> '<json>' [options]\n       kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [options]"
+    );
+    return 1;
+  }
+
+  try {
+    const token = await ensureValidToken();
+    const base = {
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      knId,
+      businessDomain,
+    };
+    const result =
+      action === "query"
+        ? await actionTypeQuery({ ...base, atId, body })
+        : action === "execute"
+          ? await actionTypeExecute({ ...base, atId, body })
+          : null;
+    if (!result) {
+      console.error(`Unknown action-type action: ${action}. Use query or execute.`);
+      return 1;
+    }
+    console.log(formatCallOutput(result, pretty));
+    return 0;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
+}
+
+async function runBknActionExecutionCommand(args: string[]): Promise<number> {
+  let filteredArgs: string[];
+  let pretty: boolean;
+  let businessDomain: string;
+  try {
+    const parsed = parseOntologyQueryFlags(args);
+    filteredArgs = parsed.filteredArgs;
+    pretty = parsed.pretty;
+    businessDomain = parsed.businessDomain;
+  } catch (error) {
+    if (error instanceof Error && error.message === "help") {
+      console.log(`kweaverc bkn action-execution get <kn-id> <execution-id> [--pretty] [-bd value]
+
+Get action execution status.`);
+      return 0;
+    }
+    throw error;
+  }
+
+  const [subAction, knId, executionId] = filteredArgs;
+  if (subAction !== "get" || !knId || !executionId) {
+    console.error("Usage: kweaverc bkn action-execution get <kn-id> <execution-id> [options]");
+    return 1;
+  }
+
+  try {
+    const token = await ensureValidToken();
+    const result = await actionExecutionGet({
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      knId,
+      executionId,
+      businessDomain,
+    });
+    console.log(formatCallOutput(result, pretty));
+    return 0;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
+}
+
+async function runBknActionLogCommand(args: string[]): Promise<number> {
+  const [action, ...rest] = args;
+  if (!action || action === "--help" || action === "-h") {
+    console.log(`kweaverc bkn action-log list <kn-id> [options]
+kweaverc bkn action-log get <kn-id> <log-id> [options]
+kweaverc bkn action-log cancel <kn-id> <log-id> [options]
+
+List/get execution logs. cancel has side effects - only use when explicitly requested.
+Options for list: --limit, --need-total, --action-type-id, --status, --trigger-type, --search-after`);
+    return 0;
+  }
+
+  let pretty = false;
+  let businessDomain = "bd_public";
+  let limit: number | undefined;
+  let needTotal: boolean | undefined;
+  let actionTypeId: string | undefined;
+  let status: string | undefined;
+  let triggerType: string | undefined;
+  let searchAfter: string | undefined;
+
+  const filteredArgs: string[] = [];
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg === "--help" || arg === "-h") {
+      throw new Error("help");
+    }
+    if (arg === "--pretty") {
+      pretty = true;
+      continue;
+    }
+    if ((arg === "-bd" || arg === "--biz-domain") && rest[i + 1]) {
+      businessDomain = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--limit" && rest[i + 1]) {
+      limit = parseInt(rest[i + 1], 10);
+      i += 1;
+      continue;
+    }
+    if (arg === "--need-total" && rest[i + 1]) {
+      needTotal = rest[i + 1].toLowerCase() === "true";
+      i += 1;
+      continue;
+    }
+    if (arg === "--action-type-id" && rest[i + 1]) {
+      actionTypeId = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--status" && rest[i + 1]) {
+      status = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--trigger-type" && rest[i + 1]) {
+      triggerType = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--search-after" && rest[i + 1]) {
+      searchAfter = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    filteredArgs.push(arg);
+  }
+
+  try {
+    const token = await ensureValidToken();
+    const base = {
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      businessDomain,
+    };
+
+    if (action === "list") {
+      const [knId] = filteredArgs;
+      if (!knId) {
+        console.error("Usage: kweaverc bkn action-log list <kn-id> [options]");
+        return 1;
+      }
+      const result = await actionLogsList({
+        ...base,
+        knId,
+        limit,
+        needTotal,
+        actionTypeId,
+        status,
+        triggerType,
+        searchAfter,
+      });
+      console.log(formatCallOutput(result, pretty));
+      return 0;
+    }
+
+    if (action === "get") {
+      const [knId, logId] = filteredArgs;
+      if (!knId || !logId) {
+        console.error("Usage: kweaverc bkn action-log get <kn-id> <log-id> [options]");
+        return 1;
+      }
+      const result = await actionLogGet({ ...base, knId, logId });
+      console.log(formatCallOutput(result, pretty));
+      return 0;
+    }
+
+    if (action === "cancel") {
+      const [knId, logId] = filteredArgs;
+      if (!knId || !logId) {
+        console.error("Usage: kweaverc bkn action-log cancel <kn-id> <log-id> [options]");
+        return 1;
+      }
+      const result = await actionLogCancel({ ...base, knId, logId });
+      console.log(formatCallOutput(result, pretty));
+      return 0;
+    }
+
+    console.error(`Unknown action-log action: ${action}. Use list, get, or cancel.`);
+    return 1;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
 }
 
 async function runBknListCommand(args: string[]): Promise<number> {
@@ -504,7 +911,11 @@ async function runBknListCommand(args: string[]): Promise<number> {
     });
 
     if (body) {
-      console.log(options.verbose ? formatCallOutput(body, options.pretty) : formatSimpleBknList(body, options.pretty));
+      console.log(
+        options.verbose
+          ? formatCallOutput(body, options.pretty)
+          : formatSimpleBknList(body, options.pretty, options.detail)
+      );
     }
     return 0;
   } catch (error) {
@@ -524,6 +935,7 @@ Options:
   --direction <asc|desc>  Sort direction (default: desc)
   --name-pattern <s> Filter by name pattern
   --tag <s>          Filter by tag
+  --detail           Include the detail field in simplified output
   --verbose, -v      Show full JSON response
   -bd, --biz-domain <value>  Business domain (default: bd_public)
   --pretty           Pretty-print JSON output (applies to both modes)`;
