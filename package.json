@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "A TypeScript CLI tool to call KWeaver.",
   "type": "module",
-  "bin": "bin/kweaverc.js",
+  "bin": {
+    "kweaverc": "bin/kweaverc.js"
+  },
   "files": [
     "bin",
     "dist"

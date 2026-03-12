@@ -44,19 +44,6 @@ Run the built CLI locally:
 node dist/cli.js --help
 ```
 
-## Publish
-
-Before publishing:
-
-```bash
-nvm use
-npm install
-npm test
-npm publish --access public
-```
-
-`prepublishOnly` runs the TypeScript build automatically before publish.
-
 ## Auth
 
 Use `nvm use` first, then pass only the platform base URL:

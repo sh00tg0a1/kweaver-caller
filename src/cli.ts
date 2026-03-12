@@ -29,7 +29,7 @@ Commands:
 export async function run(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
 
-  if (!command || command === "--help" || command === "-h" || command === "help") {
+  if (argv.length === 0 || !command || command === "--help" || command === "-h" || command === "help") {
     printHelp();
     return 0;
   }

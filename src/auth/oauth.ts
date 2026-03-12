@@ -482,8 +482,35 @@ export function getStoredAuthSummary(baseUrl?: string): {
   };
 }
 
+function formatOAuthErrorBody(body: string): string | null {
+  let data: { error?: string; error_description?: string };
+  try {
+    data = JSON.parse(body) as { error?: string; error_description?: string };
+  } catch {
+    return null;
+  }
+  if (!data || typeof data.error !== "string") {
+    return null;
+  }
+  const code = data.error;
+  const description = typeof data.error_description === "string" ? data.error_description : "";
+  const lines: string[] = [`OAuth error: ${code}`];
+  if (description) {
+    lines.push(description);
+  }
+  if (code === "invalid_grant") {
+    lines.push("");
+    lines.push("The refresh token or authorization code is invalid or expired. Run `kweaverc auth <platform-url>` again to log in.");
+  }
+  return lines.join("\n");
+}
+
 export function formatHttpError(error: unknown): string {
   if (error instanceof HttpError) {
+    const oauthMessage = formatOAuthErrorBody(error.body);
+    if (oauthMessage) {
+      return `HTTP ${error.status} ${error.statusText}\n\n${oauthMessage}`;
+    }
     return `${error.message}\n${error.body}`.trim();
   }
 

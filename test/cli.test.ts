@@ -25,7 +25,7 @@ import {
   formatHttpError,
   getAuthorizationSuccessMessage,
 } from "../src/auth/oauth.js";
-import { NetworkRequestError } from "../src/utils/http.js";
+import { HttpError, NetworkRequestError } from "../src/utils/http.js";
 
 function createConfigDir(): string {
   return mkdtempSync(join(tmpdir(), "kweaverc-cli-"));
@@ -377,6 +377,19 @@ test("formatHttpError expands network request failures with url and cause", () =
     message,
     "Network request failed\nMethod: POST\nURL: https://adp.aishu.cn/oauth2/clients\nCause: getaddrinfo ENOTFOUND adp.aishu.cn\nHint: DNS lookup failed. Check whether the domain is correct and reachable from your network."
   );
+});
+
+test("formatHttpError formats OAuth invalid_grant with readable hint", () => {
+  const body = JSON.stringify({
+    error: "invalid_grant",
+    error_description:
+      "The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client. The OAuth 2.0 Client ID from this request does not match the ID during the initial token issuance.",
+  });
+  const message = formatHttpError(new HttpError(400, "Bad Request", body));
+
+  assert.ok(message.startsWith("HTTP 400 Bad Request"));
+  assert.ok(message.includes("OAuth error: invalid_grant"));
+  assert.ok(message.includes("Run `kweaverc auth <platform-url>` again to log in"));
 });
 
 test("getAuthorizationSuccessMessage tells the user to close the page", () => {
