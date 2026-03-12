@@ -124,6 +124,8 @@ export interface EnsureClientOptions {
   port: number;
   clientName: string;
   forceRegister: boolean;
+  host?: string;
+  redirectUriOverride?: string;
   lang?: string;
   product?: string;
   xForwardedPrefix?: string;
@@ -134,10 +136,67 @@ export interface EnsuredClientConfig {
   created: boolean;
 }
 
+export interface AuthRedirectConfig {
+  redirectUri: string;
+  logoutRedirectUri: string;
+  listenHost: string;
+  listenPort: number;
+  callbackPath: string;
+}
+
+function toSuccessfulLogoutPath(pathname: string): string {
+  if (pathname.endsWith("/callback")) {
+    return `${pathname.slice(0, -"/callback".length)}/successful-logout`;
+  }
+
+  return `${pathname.replace(/\/$/, "")}/successful-logout`;
+}
+
+function normalizeListenHost(host?: string): string {
+  return host?.trim() || "127.0.0.1";
+}
+
+export function buildAuthRedirectConfig(options: {
+  port: number;
+  host?: string;
+  redirectUriOverride?: string;
+}): AuthRedirectConfig {
+  const listenHost = normalizeListenHost(options.host);
+  const listenPort = options.port;
+
+  if (options.redirectUriOverride) {
+    const redirect = new URL(options.redirectUriOverride);
+    const logout = new URL(options.redirectUriOverride);
+    logout.pathname = toSuccessfulLogoutPath(redirect.pathname);
+    logout.search = "";
+    logout.hash = "";
+
+    return {
+      redirectUri: redirect.toString(),
+      logoutRedirectUri: logout.toString(),
+      listenHost,
+      listenPort,
+      callbackPath: redirect.pathname,
+    };
+  }
+
+  return {
+    redirectUri: `http://${listenHost}:${listenPort}/callback`,
+    logoutRedirectUri: `http://${listenHost}:${listenPort}/successful-logout`,
+    listenHost,
+    listenPort,
+    callbackPath: "/callback",
+  };
+}
+
 export async function ensureClientConfig(options: EnsureClientOptions): Promise<EnsuredClientConfig> {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
-  const redirectUri = `http://127.0.0.1:${options.port}/callback`;
-  const logoutRedirectUri = `http://127.0.0.1:${options.port}/successful-logout`;
+  const redirect = buildAuthRedirectConfig({
+    port: options.port,
+    host: options.host,
+    redirectUriOverride: options.redirectUriOverride,
+  });
+  const { redirectUri, logoutRedirectUri } = redirect;
 
   const client = loadClientConfig(baseUrl);
   if (
@@ -184,13 +243,10 @@ export function buildAuthorizationUrl(client: ClientConfig, state = randomValue(
 }
 
 function waitForAuthorizationCode(
-  redirectUri: string,
+  options: { listenHost: string; listenPort: number; callbackPath: string },
   expectedState: string
 ): Promise<{ code: string; state: string; scope?: string }> {
-  const redirect = new URL(redirectUri);
-  const hostname = redirect.hostname;
-  const port = Number(redirect.port || 80);
-  const pathname = redirect.pathname;
+  const { listenHost, listenPort, callbackPath } = options;
 
   return new Promise((resolve, reject) => {
     const server = createServer((request, response) => {
@@ -200,8 +256,8 @@ function waitForAuthorizationCode(
         return;
       }
 
-      const callbackUrl = new URL(request.url, `${redirect.protocol}//${request.headers.host}`);
-      if (callbackUrl.pathname !== pathname) {
+      const callbackUrl = new URL(request.url, `http://${request.headers.host ?? `${listenHost}:${listenPort}`}`);
+      if (callbackUrl.pathname !== callbackPath) {
         response.statusCode = 404;
         response.end("Not Found");
         return;
@@ -246,7 +302,7 @@ function waitForAuthorizationCode(
     });
 
     server.on("error", (error) => reject(error));
-    server.listen(port, hostname);
+    server.listen(listenPort, listenHost);
   });
 }
 
@@ -334,6 +390,8 @@ export interface AuthLoginOptions {
   clientName: string;
   open: boolean;
   forceRegister: boolean;
+  host?: string;
+  redirectUriOverride?: string;
   lang?: string;
   product?: string;
   xForwardedPrefix?: string;
@@ -346,11 +404,18 @@ export async function login(options: AuthLoginOptions): Promise<{
   callback: CallbackSession;
   created: boolean;
 }> {
+  const redirect = buildAuthRedirectConfig({
+    port: options.port,
+    host: options.host,
+    redirectUriOverride: options.redirectUriOverride,
+  });
   const { client, created } = await ensureClientConfig({
     baseUrl: options.baseUrl,
     port: options.port,
     clientName: options.clientName,
     forceRegister: options.forceRegister,
+    host: options.host,
+    redirectUriOverride: options.redirectUriOverride,
     lang: options.lang,
     product: options.product,
     xForwardedPrefix: options.xForwardedPrefix,
@@ -358,8 +423,14 @@ export async function login(options: AuthLoginOptions): Promise<{
   const state = randomValue(12);
   const authorizationUrl = buildAuthorizationUrl(client, state);
 
-  const waitForCode = waitForAuthorizationCode(client.redirectUri, state);
-  console.log(`Waiting for OAuth callback on ${client.redirectUri}`);
+  const waitForCode = waitForAuthorizationCode(
+    {
+      listenHost: redirect.listenHost,
+      listenPort: redirect.listenPort,
+      callbackPath: redirect.callbackPath,
+    },
+    state
+  );
 
   if (options.open) {
     console.log(`Opening browser for authorization: ${authorizationUrl}`);
@@ -369,7 +440,16 @@ export async function login(options: AuthLoginOptions): Promise<{
       console.error(authorizationUrl);
     }
   } else {
-    console.log(`Open this URL to continue: ${authorizationUrl}`);
+    console.log("Authorization URL:");
+    console.log(authorizationUrl);
+    console.log("");
+    console.log(`Redirect URI: ${client.redirectUri}`);
+    console.log(`Waiting for OAuth callback on http://${redirect.listenHost}:${redirect.listenPort}${redirect.callbackPath}`);
+    if (redirect.listenHost === "127.0.0.1" || redirect.listenHost === "localhost") {
+      console.log("");
+      console.log("If your browser is on another machine, use SSH port forwarding first:");
+      console.log(`ssh -L ${redirect.listenPort}:127.0.0.1:${redirect.listenPort} user@server`);
+    }
   }
 
   const callbackResult = await waitForCode;

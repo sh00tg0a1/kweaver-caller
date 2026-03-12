@@ -8,7 +8,7 @@ function printHelp(): void {
 
 Usage:
   kweaverc auth <platform-url>
-  kweaverc auth <platform-url> [--alias name]
+  kweaverc auth <platform-url> [--alias name] [--no-open] [--host host] [--redirect-uri uri]
   kweaverc auth status [platform-url]
   kweaverc auth list
   kweaverc auth use <platform-url>

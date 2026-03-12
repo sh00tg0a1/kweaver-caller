@@ -69,7 +69,10 @@ export async function runAuthCommand(args: string[]): Promise<number> {
       const port = Number(readOption(args, "--port") ?? "9010");
       const clientName = readOption(args, "--client-name") ?? "kweaverc";
       const alias = readOption(args, "--alias");
+      const host = readOption(args, "--host");
+      const redirectUriOverride = readOption(args, "--redirect-uri");
       const forceRegister = args.includes("--force-register");
+      const open = !args.includes("--no-open");
       const lang = readOption(args, "--lang") ?? "zh-cn";
       const product = readOption(args, "--product") ?? "adp";
       const xForwardedPrefix = readOption(args, "--x-forwarded-prefix") ?? "";
@@ -78,8 +81,10 @@ export async function runAuthCommand(args: string[]): Promise<number> {
         baseUrl: normalizedTarget,
         port,
         clientName,
-        open: true,
+        open,
         forceRegister,
+        host,
+        redirectUriOverride,
         lang,
         product,
         xForwardedPrefix,
@@ -194,7 +199,7 @@ export async function runAuthCommand(args: string[]): Promise<number> {
   }
 
   console.error("Usage: kweaverc auth <platform-url>");
-  console.error("       kweaverc auth <platform-url> [--alias <name>]");
+  console.error("       kweaverc auth <platform-url> [--alias <name>] [--no-open] [--host <host>] [--redirect-uri <uri>]");
   console.error("       kweaverc auth status [platform-url|alias]");
   console.error("       kweaverc auth list");
   console.error("       kweaverc auth use <platform-url|alias>");

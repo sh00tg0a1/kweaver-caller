@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,6 +21,7 @@ import {
 import { parseTokenArgs } from "../src/commands/token.js";
 import {
   buildAuthorizationUrl,
+  buildAuthRedirectConfig,
   formatHttpError,
   getAuthorizationSuccessMessage,
 } from "../src/auth/oauth.js";
@@ -44,6 +47,28 @@ async function importStoreModule(configDir: string) {
   process.env.KWEAVERC_CONFIG_DIR = configDir;
   const moduleUrl = pathToFileURL(join(process.cwd(), "src/config/store.ts")).href;
   return import(`${moduleUrl}?t=${Date.now()}-${Math.random()}`);
+}
+
+async function listen(server: ReturnType<typeof createServer>): Promise<number> {
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  return (server.address() as AddressInfo).port;
+}
+
+async function reservePort(): Promise<number> {
+  const server = createServer();
+  const port = await listen(server);
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  return port;
 }
 
 test("parseCallArgs parses curl-style request flags", () => {
@@ -133,6 +158,123 @@ test("buildAuthorizationUrl generates a complete oauth url from client config", 
   assert.equal(url.searchParams.get("state"), "state-123");
   assert.equal(url.searchParams.get("lang"), "zh-cn");
   assert.equal(url.searchParams.get("product"), "adp");
+});
+
+test("buildAuthRedirectConfig uses localhost callback by default", () => {
+  const config = buildAuthRedirectConfig({ port: 9010 });
+
+  assert.equal(config.redirectUri, "http://127.0.0.1:9010/callback");
+  assert.equal(config.logoutRedirectUri, "http://127.0.0.1:9010/successful-logout");
+  assert.equal(config.listenHost, "127.0.0.1");
+  assert.equal(config.listenPort, 9010);
+  assert.equal(config.callbackPath, "/callback");
+});
+
+test("buildAuthRedirectConfig supports host and redirect override", () => {
+  const config = buildAuthRedirectConfig({
+    port: 9010,
+    host: "0.0.0.0",
+    redirectUriOverride: "https://auth.example.com/kweaver/callback",
+  });
+
+  assert.equal(config.redirectUri, "https://auth.example.com/kweaver/callback");
+  assert.equal(config.logoutRedirectUri, "https://auth.example.com/kweaver/successful-logout");
+  assert.equal(config.listenHost, "0.0.0.0");
+  assert.equal(config.listenPort, 9010);
+  assert.equal(config.callbackPath, "/kweaver/callback");
+});
+
+test("login with --no-open prints headless instructions and accepts callback", async () => {
+  const configDir = createConfigDir();
+  process.env.KWEAVERC_CONFIG_DIR = configDir;
+
+  const oauthServer = createServer((request, response) => {
+    if (request.method === "POST" && request.url === "/oauth2/clients") {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ client_id: "client-headless", client_secret: "secret-headless" }));
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/oauth2/token") {
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          access_token: "token-headless",
+          token_type: "bearer",
+          scope: "openid offline all",
+          refresh_token: "refresh-headless",
+        })
+      );
+      return;
+    }
+
+    response.statusCode = 404;
+    response.end("not found");
+  });
+
+  const platformPort = await listen(oauthServer);
+  const callbackPort = await reservePort();
+  const output: string[] = [];
+  const originalConsoleLog = console.log;
+
+  try {
+    console.log = (...args: unknown[]) => {
+      output.push(args.map(String).join(" "));
+    };
+
+    const loginPromise = import("../src/auth/oauth.js").then(({ login }) =>
+      login({
+        baseUrl: `http://127.0.0.1:${platformPort}`,
+        port: callbackPort,
+        clientName: "kweaverc-test",
+        open: false,
+        forceRegister: true,
+        host: "127.0.0.1",
+        redirectUriOverride: "https://auth.example.com/kweaver/callback",
+      })
+    );
+
+    let authorizationUrl = "";
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      authorizationUrl = output.find((line) => line.includes("/oauth2/auth?")) ?? "";
+      if (authorizationUrl) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    assert.ok(authorizationUrl, "expected auth URL to be printed in headless mode");
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    assert.ok(state, "expected auth URL to include state");
+
+    const callbackResponse = await fetch(
+      `http://127.0.0.1:${callbackPort}/kweaver/callback?code=code-headless&state=${state}`
+    );
+    assert.equal(callbackResponse.status, 200);
+    assert.equal(await callbackResponse.text(), getAuthorizationSuccessMessage());
+
+    const result = await loginPromise;
+    assert.equal(result.client.redirectUri, "https://auth.example.com/kweaver/callback");
+    assert.equal(result.callback.code, "code-headless");
+    assert.equal(result.token.accessToken, "token-headless");
+
+    assert.ok(output.includes("Authorization URL:"));
+    assert.ok(output.includes("Redirect URI: https://auth.example.com/kweaver/callback"));
+    assert.ok(output.includes(`Waiting for OAuth callback on http://127.0.0.1:${callbackPort}/kweaver/callback`));
+    assert.ok(output.includes("If your browser is on another machine, use SSH port forwarding first:"));
+    assert.ok(output.includes(`ssh -L ${callbackPort}:127.0.0.1:${callbackPort} user@server`));
+  } finally {
+    console.log = originalConsoleLog;
+    await new Promise<void>((resolve, reject) => {
+      oauthServer.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
 });
 
 test("getClientProvisioningMessage describes whether a client was reused or created", () => {
