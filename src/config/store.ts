@@ -44,6 +44,24 @@ export interface CallbackSession {
   receivedAt: string;
 }
 
+/** Single context-loader entry (named kn_id). */
+export interface ContextLoaderEntry {
+  name: string;
+  knId: string;
+}
+
+/** Per-platform context-loader config: multiple kn entries, one current. */
+export interface ContextLoaderConfig {
+  configs: ContextLoaderEntry[];
+  current: string;
+}
+
+const MCP_PATH = "/api/agent-retrieval/v1/mcp";
+
+function buildMcpUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "") + MCP_PATH;
+}
+
 interface StoreState {
   currentPlatform?: string;
   aliases?: Record<string, string>;
@@ -309,6 +327,130 @@ export function saveCallbackSession(session: CallbackSession): void {
   ensureStoreReady();
   ensurePlatformDir(session.baseUrl);
   writeJsonFile(getPlatformFile(session.baseUrl, "callback.json"), session);
+}
+
+/** Legacy format (pre-refactor). */
+interface LegacyContextLoaderConfig {
+  mcpUrl?: string;
+  knId?: string;
+}
+
+function migrateLegacyContextLoader(raw: unknown): ContextLoaderConfig {
+  const leg = raw as LegacyContextLoaderConfig;
+  if (leg?.knId && !Array.isArray((raw as ContextLoaderConfig).configs)) {
+    return {
+      configs: [{ name: "default", knId: leg.knId }],
+      current: "default",
+    };
+  }
+  return raw as ContextLoaderConfig;
+}
+
+export function loadContextLoaderConfig(baseUrl?: string): ContextLoaderConfig | null {
+  ensureStoreReady();
+  const targetBaseUrl = baseUrl ?? getCurrentPlatform();
+  if (!targetBaseUrl) {
+    return null;
+  }
+  const raw = readJsonFile<unknown>(getPlatformFile(targetBaseUrl, "context-loader.json"));
+  if (!raw) return null;
+
+  const migrated = migrateLegacyContextLoader(raw);
+  if (
+    !Array.isArray(migrated.configs) ||
+    migrated.configs.length === 0 ||
+    !migrated.current
+  ) {
+    return null;
+  }
+  const hasCurrent = migrated.configs.some((c) => c.name === migrated.current);
+  if (!hasCurrent) return null;
+
+  const isLegacy = (raw as LegacyContextLoaderConfig)?.knId && !(raw as ContextLoaderConfig).configs;
+  if (isLegacy) {
+    saveContextLoaderConfig(targetBaseUrl, migrated);
+  }
+  return migrated;
+}
+
+export function saveContextLoaderConfig(baseUrl: string, config: ContextLoaderConfig): void {
+  ensureStoreReady();
+  ensurePlatformDir(baseUrl);
+  writeJsonFile(getPlatformFile(baseUrl, "context-loader.json"), config);
+}
+
+export interface CurrentContextLoaderKn {
+  mcpUrl: string;
+  knId: string;
+}
+
+export function getCurrentContextLoaderKn(baseUrl?: string): CurrentContextLoaderKn | null {
+  ensureStoreReady();
+  const targetBaseUrl = baseUrl ?? getCurrentPlatform();
+  if (!targetBaseUrl) return null;
+
+  const client = loadClientConfig(targetBaseUrl);
+  if (!client?.baseUrl) return null;
+
+  const config = loadContextLoaderConfig(targetBaseUrl);
+  if (!config) return null;
+
+  const entry = config.configs.find((c) => c.name === config.current);
+  if (!entry) return null;
+
+  return {
+    mcpUrl: buildMcpUrl(client.baseUrl),
+    knId: entry.knId,
+  };
+}
+
+export function addContextLoaderEntry(baseUrl: string, name: string, knId: string): void {
+  ensureStoreReady();
+  const existing = loadContextLoaderConfig(baseUrl);
+  const configs = existing?.configs ?? [];
+  const idx = configs.findIndex((c) => c.name === name);
+  const entry: ContextLoaderEntry = { name, knId };
+  const newConfigs = idx >= 0
+    ? configs.map((c, i) => (i === idx ? entry : c))
+    : [...configs, entry];
+  const current = existing?.current ?? name;
+  const hasCurrent = newConfigs.some((c) => c.name === current);
+  saveContextLoaderConfig(baseUrl, {
+    configs: newConfigs,
+    current: hasCurrent ? current : name,
+  });
+}
+
+export function setCurrentContextLoader(baseUrl: string, name: string): void {
+  ensureStoreReady();
+  const config = loadContextLoaderConfig(baseUrl);
+  if (!config) {
+    throw new Error("Context-loader is not configured. Run: kweaverc context-loader config set --kn-id <id>");
+  }
+  const hasName = config.configs.some((c) => c.name === name);
+  if (!hasName) {
+    throw new Error(`No context-loader config named '${name}'. Use config list to see available configs.`);
+  }
+  saveContextLoaderConfig(baseUrl, { ...config, current: name });
+}
+
+export function removeContextLoaderEntry(baseUrl: string, name: string): void {
+  ensureStoreReady();
+  const config = loadContextLoaderConfig(baseUrl);
+  if (!config) return;
+
+  const newConfigs = config.configs.filter((c) => c.name !== name);
+  if (newConfigs.length === 0) {
+    const file = getPlatformFile(baseUrl, "context-loader.json");
+    if (existsSync(file)) rmSync(file, { force: true });
+    return;
+  }
+
+  let newCurrent = config.current;
+  if (config.current === name) {
+    newCurrent = newConfigs[0].name;
+  }
+  saveContextLoaderConfig(baseUrl, { configs: newConfigs, current: newCurrent });
 }
 
 export function hasPlatform(baseUrl: string): boolean {

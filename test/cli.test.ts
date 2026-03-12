@@ -132,6 +132,82 @@ test("run agent --help shows subcommand help", async () => {
   assert.equal(await run(["agent", "--help"]), 0);
 });
 
+test("run context-loader shows subcommand help", async () => {
+  assert.equal(await run(["context-loader"]), 0);
+});
+
+test("run context-loader --help shows subcommand help", async () => {
+  assert.equal(await run(["context-loader", "--help"]), 0);
+});
+
+test("run context alias invokes context-loader", async () => {
+  assert.equal(await run(["context"]), 0);
+});
+
+test("run context-loader config show when not configured", async () => {
+  const configDir = createConfigDir();
+  process.env.KWEAVERC_CONFIG_DIR = configDir;
+
+  const store = await importStoreModule(configDir);
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "c",
+    clientSecret: "s",
+    redirectUri: "http://127.0.0.1:9010/cb",
+    logoutRedirectUri: "http://127.0.0.1:9010/logout",
+    scope: "openid",
+  });
+  store.saveTokenConfig({
+    baseUrl: "https://dip.aishu.cn",
+    accessToken: "t",
+    tokenType: "bearer",
+    scope: "openid",
+    obtainedAt: new Date().toISOString(),
+  });
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  const cli = await importCliModule(configDir);
+  const code = await cli.run(["context-loader", "config", "show"]);
+  assert.equal(code, 0);
+});
+
+test("run context-loader config set use list", async () => {
+  const configDir = createConfigDir();
+  process.env.KWEAVERC_CONFIG_DIR = configDir;
+
+  const store = await importStoreModule(configDir);
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "c",
+    clientSecret: "s",
+    redirectUri: "http://127.0.0.1:9010/cb",
+    logoutRedirectUri: "http://127.0.0.1:9010/logout",
+    scope: "openid",
+  });
+  store.saveTokenConfig({
+    baseUrl: "https://dip.aishu.cn",
+    accessToken: "t",
+    tokenType: "bearer",
+    scope: "openid",
+    obtainedAt: new Date().toISOString(),
+  });
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  const cli = await importCliModule(configDir);
+
+  assert.equal(await cli.run(["context-loader", "config", "set", "--kn-id", "kn-123"]), 0);
+  const kn = store.getCurrentContextLoaderKn();
+  assert.ok(kn);
+  assert.equal(kn.knId, "kn-123");
+  assert.equal(kn.mcpUrl, "https://dip.aishu.cn/api/agent-retrieval/v1/mcp");
+
+  assert.equal(await cli.run(["context-loader", "config", "set", "--kn-id", "kn-456", "--name", "project-a"]), 0);
+  assert.equal(await cli.run(["context-loader", "config", "use", "project-a"]), 0);
+  assert.equal(store.getCurrentContextLoaderKn()?.knId, "kn-456");
+
+  assert.equal(await cli.run(["context-loader", "config", "list"]), 0);
+});
+
 test("buildAuthorizationUrl generates a complete oauth url from client config", () => {
   const authorizationUrl = buildAuthorizationUrl(
     {

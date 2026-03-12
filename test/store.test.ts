@@ -196,3 +196,115 @@ test("store migrates legacy single-platform files automatically", async () => {
     [{ baseUrl: "https://dip.aishu.cn", hasToken: true, isCurrent: true, alias: undefined }]
   );
 });
+
+test("store saves and loads context-loader config per platform", async () => {
+  const configDir = createStoreDir();
+  const store = await importStoreModule(configDir);
+
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "c",
+    clientSecret: "s",
+    redirectUri: "http://127.0.0.1:9010/cb",
+    logoutRedirectUri: "http://127.0.0.1:9010/logout",
+    scope: "openid",
+  });
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  assert.equal(store.loadContextLoaderConfig(), null);
+
+  store.addContextLoaderEntry("https://dip.aishu.cn", "default", "kn-123");
+
+  const loaded = store.loadContextLoaderConfig();
+  assert.ok(loaded);
+  assert.equal(loaded.configs.length, 1);
+  assert.equal(loaded.configs[0].name, "default");
+  assert.equal(loaded.configs[0].knId, "kn-123");
+  assert.equal(loaded.current, "default");
+
+  const kn = store.getCurrentContextLoaderKn();
+  assert.ok(kn);
+  assert.equal(kn.mcpUrl, "https://dip.aishu.cn/api/agent-retrieval/v1/mcp");
+  assert.equal(kn.knId, "kn-123");
+
+  store.saveClientConfig({
+    baseUrl: "https://adp.aishu.cn",
+    clientId: "c2",
+    clientSecret: "s2",
+    redirectUri: "http://127.0.0.1:9010/cb",
+    logoutRedirectUri: "http://127.0.0.1:9010/logout",
+    scope: "openid",
+  });
+  store.setCurrentPlatform("https://adp.aishu.cn");
+
+  assert.equal(store.loadContextLoaderConfig(), null);
+  assert.equal(store.getCurrentContextLoaderKn(), null);
+
+  const dipConfig = store.loadContextLoaderConfig("https://dip.aishu.cn");
+  assert.ok(dipConfig);
+  assert.equal(dipConfig.configs[0].knId, "kn-123");
+
+  const dipKn = store.getCurrentContextLoaderKn("https://dip.aishu.cn");
+  assert.ok(dipKn);
+  assert.equal(dipKn.mcpUrl, "https://dip.aishu.cn/api/agent-retrieval/v1/mcp");
+});
+
+test("store context-loader supports multiple configs and switch", async () => {
+  const configDir = createStoreDir();
+  const store = await importStoreModule(configDir);
+
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "c",
+    clientSecret: "s",
+    redirectUri: "http://127.0.0.1:9010/cb",
+    logoutRedirectUri: "http://127.0.0.1:9010/logout",
+    scope: "openid",
+  });
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  store.addContextLoaderEntry("https://dip.aishu.cn", "default", "kn-1");
+  store.addContextLoaderEntry("https://dip.aishu.cn", "project-a", "kn-2");
+
+  let kn = store.getCurrentContextLoaderKn();
+  assert.equal(kn?.knId, "kn-1");
+
+  store.setCurrentContextLoader("https://dip.aishu.cn", "project-a");
+  kn = store.getCurrentContextLoaderKn();
+  assert.equal(kn?.knId, "kn-2");
+
+  store.removeContextLoaderEntry("https://dip.aishu.cn", "project-a");
+  kn = store.getCurrentContextLoaderKn();
+  assert.equal(kn?.knId, "kn-1");
+});
+
+test("store context-loader migrates legacy format", async () => {
+  const configDir = createStoreDir();
+  const store = await importStoreModule(configDir);
+
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "c",
+    clientSecret: "s",
+    redirectUri: "http://127.0.0.1:9010/cb",
+    logoutRedirectUri: "http://127.0.0.1:9010/logout",
+    scope: "openid",
+  });
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  const enc = (s: string) =>
+    Buffer.from(s, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const rawPath = join(store.getConfigDir(), "platforms", enc("https://dip.aishu.cn"), "context-loader.json");
+  writeFileSync(rawPath, JSON.stringify({ mcpUrl: "https://old.example.com/mcp", knId: "legacy-kn" }));
+
+  const kn = store.getCurrentContextLoaderKn();
+  assert.ok(kn);
+  assert.equal(kn.knId, "legacy-kn");
+  assert.equal(kn.mcpUrl, "https://dip.aishu.cn/api/agent-retrieval/v1/mcp");
+
+  const config = store.loadContextLoaderConfig();
+  assert.ok(config);
+  assert.equal(config.configs.length, 1);
+  assert.equal(config.configs[0].name, "default");
+  assert.equal(config.configs[0].knId, "legacy-kn");
+});
