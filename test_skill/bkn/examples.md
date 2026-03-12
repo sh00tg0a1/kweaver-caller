@@ -80,7 +80,13 @@ kweaverc bkn delete kn_system_incident_event_network
 对象实例查询：
 
 ```bash
-kweaverc bkn object-type query kn_xxx pod '{"condition":{"operation":"and","sub_conditions":[]},"limit":10}' --pretty
+kweaverc bkn object-type query kn_xxx pod '{"condition":{"operation":"and","sub_conditions":[]}}' --limit 10 --pretty
+```
+
+对象实例查询下一页：
+
+```bash
+kweaverc bkn object-type query kn_xxx pod '{"condition":{"operation":"and","sub_conditions":[]}}' --limit 10 --search-after '["20250922_020907_00027_qe7sf","xdb6f0e5f5ba7449ab94822da9f008386","1"]' --pretty
 ```
 
 对象属性查询：

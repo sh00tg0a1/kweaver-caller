@@ -24,6 +24,7 @@ import {
   parseBknCreateArgs,
   parseBknUpdateArgs,
   parseBknDeleteArgs,
+  parseBknObjectTypeQueryArgs,
   formatSimpleBknList,
 } from "../src/commands/bkn.js";
 import { parseAgentListArgs, formatSimpleAgentList } from "../src/commands/agent.js";
@@ -735,6 +736,50 @@ test("parseBknDeleteArgs requires kn-id", () => {
   assert.throws(() => parseBknDeleteArgs([]), /Missing kn-id/);
 });
 
+test("parseBknObjectTypeQueryArgs merges --limit and --search-after into body", () => {
+  const opts = parseBknObjectTypeQueryArgs([
+    "kn-123",
+    "pod",
+    '{"condition":{"operation":"and","sub_conditions":[]}}',
+    "--limit",
+    "100",
+    "--search-after",
+    '["cursor-1","cursor-2"]',
+    "--pretty",
+    "-bd",
+    "bd_enterprise",
+  ]);
+
+  assert.equal(opts.knId, "kn-123");
+  assert.equal(opts.otId, "pod");
+  assert.equal(opts.pretty, true);
+  assert.equal(opts.businessDomain, "bd_enterprise");
+  assert.deepEqual(JSON.parse(opts.body), {
+    condition: { operation: "and", sub_conditions: [] },
+    limit: 100,
+    search_after: ["cursor-1", "cursor-2"],
+  });
+});
+
+test("parseBknObjectTypeQueryArgs allows body omission when --limit is provided", () => {
+  const opts = parseBknObjectTypeQueryArgs(["kn-123", "pod", "--limit", "20"]);
+  assert.deepEqual(JSON.parse(opts.body), { limit: 20 });
+});
+
+test("parseBknObjectTypeQueryArgs requires limit in body or flags", () => {
+  assert.throws(
+    () => parseBknObjectTypeQueryArgs(["kn-123", "pod", '{"condition":{"operation":"and","sub_conditions":[]}}']),
+    /Missing limit/
+  );
+});
+
+test("parseBknObjectTypeQueryArgs validates --search-after json array", () => {
+  assert.throws(
+    () => parseBknObjectTypeQueryArgs(["kn-123", "pod", "--limit", "10", "--search-after", '{"cursor":"x"}']),
+    /Expected a JSON array string/
+  );
+});
+
 test("parseAgentListArgs parses flags with defaults", () => {
   const opts = parseAgentListArgs([]);
   assert.equal(opts.name, "");
@@ -873,6 +918,8 @@ test("run bkn object-type --help shows query and properties usage", async () => 
     assert.ok(help.includes("object-type properties"));
     assert.ok(help.includes("<kn-id>"));
     assert.ok(help.includes("<ot-id>"));
+    assert.ok(help.includes("--limit <n>"));
+    assert.ok(help.includes("--search-after"));
   } finally {
     console.log = originalLog;
   }

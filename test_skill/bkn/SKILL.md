@@ -25,7 +25,7 @@ description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list
 
 **BKN 查询**（ontology-query 只读）：
 
-- `bkn object-type query <kn-id> <ot-id> '<json>'`
+- `bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>']`
 - `bkn object-type properties <kn-id> <ot-id> '<json>'`
 - `bkn subgraph <kn-id> '<json>'`
 - `bkn action-type query <kn-id> <at-id> '<json>'`
@@ -60,7 +60,7 @@ description: 通过 kweaverc CLI 管理业务知识网络（BKN），涵盖 list
 | `kweaverc bkn delete <kn-id>` | 删除网络 |
 | `kweaverc bkn export <kn-id> [options]` | 导出网络定义 |
 | `kweaverc bkn stats <kn-id> [options]` | 查看网络统计 |
-| `kweaverc bkn object-type query <kn-id> <ot-id> '<json>'` | 对象实例查询 |
+| `kweaverc bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>']` | 对象实例查询 |
 | `kweaverc bkn object-type properties <kn-id> <ot-id> '<json>'` | 对象属性查询 |
 | `kweaverc bkn subgraph <kn-id> '<json>'` | 子图查询 |
 | `kweaverc bkn action-type query <kn-id> <at-id> '<json>'` | 行动信息查询 |
@@ -180,13 +180,18 @@ kweaverc bkn delete <kn-id>
 当用户需要直接调用 ontology-query 接口查询对象、子图、属性或行动信息时：
 
 ```bash
-kweaverc bkn object-type query <kn-id> <ot-id> '{"condition":{"operation":"and","sub_conditions":[]},"limit":10}' --pretty
+kweaverc bkn object-type query <kn-id> <ot-id> '{"condition":{"operation":"and","sub_conditions":[]}}' --limit 10 --pretty
 kweaverc bkn object-type properties <kn-id> <ot-id> '{"_instance_identities":[],"properties":["name"]}' --pretty
 kweaverc bkn subgraph <kn-id> '{"relation_type_paths":[]}' --pretty
 kweaverc bkn action-type query <kn-id> <at-id> '{"_instance_identities":[{"id":"1"}]}' --pretty
 ```
 
-JSON 格式详见 `ref/ontology/ontology-query.yaml`。
+`object-type query` 支持把分页字段单独作为参数传入：
+
+- `--limit <n>`：写入请求 body 的 `limit`
+- `--search-after '<json-array>'`：写入请求 body 的 `search_after`
+
+如果同时提供 JSON body 和这些 flags，flags 会覆盖 body 中同名字段。JSON 格式详见 `ref/ontology/ontology-query.yaml`。
 
 ### 6. BKN Action（有副作用）
 
@@ -222,6 +227,7 @@ kweaverc bkn action-log cancel <kn-id> <log-id> --pretty
   - 再执行 `bkn delete`
 - 用户说“查对象实例/子图/属性/行动信息”且已知 `kn_id`、`ot_id` 等：
   - 用 `bkn object-type query` / `bkn subgraph` / `bkn action-type query` 等
+  - `object-type query` 分页时优先用 `--limit` 和 `--search-after`
 - 用户说“执行某个行动”或“取消执行”：
   - 仅在明确请求时执行 `bkn action-type execute` 或 `bkn action-log cancel`
 

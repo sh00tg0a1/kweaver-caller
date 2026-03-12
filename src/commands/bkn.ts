@@ -443,6 +443,128 @@ export function parseBknDeleteArgs(args: string[]): BknDeleteOptions {
   return { knId, businessDomain };
 }
 
+export interface BknObjectTypeQueryOptions {
+  knId: string;
+  otId: string;
+  body: string;
+  pretty: boolean;
+  businessDomain: string;
+}
+
+function parseJsonObject(text: string, errorMessage: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(errorMessage);
+  }
+
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error(errorMessage);
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function parseSearchAfterArray(text: string): unknown[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Invalid value for --search-after. Expected a JSON array string.");
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Invalid value for --search-after. Expected a JSON array string.");
+  }
+
+  return parsed;
+}
+
+export function parseBknObjectTypeQueryArgs(args: string[]): BknObjectTypeQueryOptions {
+  let pretty = false;
+  let businessDomain = "bd_public";
+  let limit: number | undefined;
+  let searchAfter: unknown[] | undefined;
+  const positionalArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+
+    if (arg === "--help" || arg === "-h") {
+      throw new Error("help");
+    }
+
+    if (arg === "--pretty") {
+      pretty = true;
+      continue;
+    }
+
+    if (arg === "-bd" || arg === "--biz-domain") {
+      businessDomain = args[i + 1] ?? "bd_public";
+      if (!businessDomain || businessDomain.startsWith("-")) {
+        throw new Error("Missing value for biz-domain flag");
+      }
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--limit") {
+      const rawLimit = args[i + 1];
+      const parsedLimit = parseInt(rawLimit ?? "", 10);
+      if (!rawLimit || rawLimit.startsWith("-") || Number.isNaN(parsedLimit) || parsedLimit < 1) {
+        throw new Error("Invalid value for --limit. Expected a positive integer.");
+      }
+      limit = parsedLimit;
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--search-after") {
+      const rawSearchAfter = args[i + 1];
+      if (!rawSearchAfter) {
+        throw new Error("Missing value for --search-after. Expected a JSON array string.");
+      }
+      searchAfter = parseSearchAfterArray(rawSearchAfter);
+      i += 1;
+      continue;
+    }
+
+    positionalArgs.push(arg);
+  }
+
+  const [knId, otId, bodyText = "{}"] = positionalArgs;
+  if (!knId || !otId) {
+    throw new Error(
+      "Usage: kweaverc bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>'] [--pretty] [-bd value]"
+    );
+  }
+  if (positionalArgs.length > 3) {
+    throw new Error(
+      "Usage: kweaverc bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>'] [--pretty] [-bd value]"
+    );
+  }
+
+  const body = parseJsonObject(bodyText, "object-type query body must be a JSON object.");
+  if (limit !== undefined) {
+    body.limit = limit;
+  }
+  if (searchAfter !== undefined) {
+    body.search_after = searchAfter;
+  }
+  if (typeof body.limit !== "number" || !Number.isFinite(body.limit) || body.limit < 1) {
+    throw new Error("Missing limit. Provide it in body JSON or via --limit <n>.");
+  }
+
+  return {
+    knId,
+    otId,
+    body: JSON.stringify(body),
+    pretty,
+    businessDomain,
+  };
+}
+
 const BKN_HELP = `kweaverc bkn
 
 Subcommands:
@@ -453,7 +575,7 @@ Subcommands:
   delete <kn-id>       Delete a knowledge network
   export <kn-id>       Export knowledge network (alias for get --export)
   stats <kn-id>        Get statistics (alias for get --stats)
-  object-type query <kn-id> <ot-id> '<json>'   Query object instances (ontology-query)
+  object-type query <kn-id> <ot-id> ['<json>']   Query object instances (ontology-query; supports --limit/--search-after)
   object-type properties <kn-id> <ot-id> '<json>'   Query object properties
   subgraph <kn-id> '<json>'   Query subgraph
   action-type query <kn-id> <at-id> '<json>'   Query action info
@@ -557,56 +679,52 @@ function parseOntologyQueryFlags(args: string[]): {
 async function runBknObjectTypeCommand(args: string[]): Promise<number> {
   const [action, ...rest] = args;
   if (!action || action === "--help" || action === "-h") {
-    console.log(`kweaverc bkn object-type query <kn-id> <ot-id> '<json>' [--pretty] [-bd value]
+    console.log(`kweaverc bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>'] [--pretty] [-bd value]
 kweaverc bkn object-type properties <kn-id> <ot-id> '<json>' [--pretty] [-bd value]
 
-Query object types via ontology-query API. JSON body format see ref/ontology/ontology-query.yaml.`);
+Query object types via ontology-query API. For query, --limit and --search-after are merged into the JSON body.`);
     return 0;
   }
 
-  let filteredArgs: string[];
-  let pretty: boolean;
-  let businessDomain: string;
   try {
-    const parsed = parseOntologyQueryFlags(rest);
-    filteredArgs = parsed.filteredArgs;
-    pretty = parsed.pretty;
-    businessDomain = parsed.businessDomain;
-  } catch (error) {
-    if (error instanceof Error && error.message === "help") {
+    if (action === "query") {
+      const options = parseBknObjectTypeQueryArgs(rest);
+      const token = await ensureValidToken();
+      const result = await objectTypeQuery({
+        baseUrl: token.baseUrl,
+        accessToken: token.accessToken,
+        knId: options.knId,
+        otId: options.otId,
+        body: options.body,
+        businessDomain: options.businessDomain,
+      });
+      console.log(formatCallOutput(result, options.pretty));
       return 0;
     }
-    throw error;
-  }
 
-  const [knId, otId, body] = filteredArgs;
-  if (!knId || !otId || !body) {
-    console.error(
-      "Usage: kweaverc bkn object-type query <kn-id> <ot-id> '<json>' [options]\n       kweaverc bkn object-type properties <kn-id> <ot-id> '<json>' [options]"
-    );
-    return 1;
-  }
+    if (action === "properties") {
+      const parsed = parseOntologyQueryFlags(rest);
+      const [knId, otId, body] = parsed.filteredArgs;
+      if (!knId || !otId || !body) {
+        console.error("Usage: kweaverc bkn object-type properties <kn-id> <ot-id> '<json>' [options]");
+        return 1;
+      }
 
-  try {
-    const token = await ensureValidToken();
-    const base = {
-      baseUrl: token.baseUrl,
-      accessToken: token.accessToken,
-      knId,
-      businessDomain,
-    };
-    const result =
-      action === "query"
-        ? await objectTypeQuery({ ...base, otId, body })
-        : action === "properties"
-          ? await objectTypeProperties({ ...base, otId, body })
-          : null;
-    if (!result) {
-      console.error(`Unknown object-type action: ${action}. Use query or properties.`);
-      return 1;
+      const token = await ensureValidToken();
+      const result = await objectTypeProperties({
+        baseUrl: token.baseUrl,
+        accessToken: token.accessToken,
+        knId,
+        otId,
+        body,
+        businessDomain: parsed.businessDomain,
+      });
+      console.log(formatCallOutput(result, parsed.pretty));
+      return 0;
     }
-    console.log(formatCallOutput(result, pretty));
-    return 0;
+
+    console.error(`Unknown object-type action: ${action}. Use query or properties.`);
+    return 1;
   } catch (error) {
     console.error(formatHttpError(error));
     return 1;
