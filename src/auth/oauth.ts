@@ -328,6 +328,30 @@ async function exchangeAuthorizationCode(client: ClientConfig, code: string): Pr
   return tokenConfig;
 }
 
+/**
+ * Call the platform's end-session endpoint so the server invalidates the session.
+ * Best-effort: failures are ignored so local logout still proceeds.
+ */
+export async function callLogoutEndpoint(client: ClientConfig, token: TokenConfig | null): Promise<void> {
+  const url = new URL(`${client.baseUrl}/oauth2/signout`);
+  if (token?.idToken) {
+    url.searchParams.set("id_token_hint", token.idToken);
+  }
+  url.searchParams.set("post_logout_redirect_uri", client.logoutRedirectUri);
+  url.searchParams.set("client_id", client.clientId);
+
+  try {
+    const response = await fetch(url.toString(), { method: "GET", redirect: "manual" });
+    if (!response.ok && response.status !== 302) {
+      const body = await response.text();
+      console.error(`Logout endpoint returned ${response.status}: ${body.slice(0, 200)}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Logout endpoint request failed: ${msg}`);
+  }
+}
+
 export async function refreshAccessToken(client: ClientConfig, refreshToken: string): Promise<TokenConfig> {
   const payload = new URLSearchParams({
     grant_type: "refresh_token",

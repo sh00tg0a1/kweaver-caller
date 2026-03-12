@@ -316,6 +316,22 @@ export function hasPlatform(baseUrl: string): boolean {
   return existsSync(getPlatformFile(baseUrl, "client.json"));
 }
 
+/**
+ * Remove token and callback for a platform so the next auth will do a full login.
+ * Keeps client config so the same app registration can be reused.
+ */
+export function clearPlatformSession(baseUrl: string): void {
+  ensureStoreReady();
+  const tokenFile = getPlatformFile(baseUrl, "token.json");
+  const callbackFile = getPlatformFile(baseUrl, "callback.json");
+  if (existsSync(tokenFile)) {
+    rmSync(tokenFile, { force: true });
+  }
+  if (existsSync(callbackFile)) {
+    rmSync(callbackFile, { force: true });
+  }
+}
+
 export function deletePlatform(baseUrl: string): void {
   ensureStoreReady();
   const platformDir = getPlatformDir(baseUrl);

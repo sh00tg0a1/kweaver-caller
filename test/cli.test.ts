@@ -323,6 +323,47 @@ test("run auth delete removes a saved platform by alias", async () => {
   assert.equal(store.getCurrentPlatform(), "https://adp.aishu.cn");
 });
 
+test("run auth logout clears token and callback but keeps client config", async () => {
+  const configDir = createConfigDir();
+  const store = await importStoreModule(configDir);
+  const auth = await importAuthModule(configDir);
+
+  store.saveClientConfig({
+    baseUrl: "https://dip.aishu.cn",
+    clientId: "client-a",
+    clientSecret: "secret-a",
+    redirectUri: "http://127.0.0.1:9010/callback",
+    logoutRedirectUri: "http://127.0.0.1:9010/successful-logout",
+    scope: "openid offline all",
+  });
+  store.saveTokenConfig({
+    baseUrl: "https://dip.aishu.cn",
+    accessToken: "token-a",
+    tokenType: "bearer",
+    scope: "openid offline all",
+    obtainedAt: "2026-03-11T00:00:00.000Z",
+  });
+  store.saveCallbackSession({
+    baseUrl: "https://dip.aishu.cn",
+    redirectUri: "http://127.0.0.1:9010/callback",
+    code: "code-1",
+    state: "state-1",
+    receivedAt: "2026-03-11T00:00:00.000Z",
+  });
+  store.setCurrentPlatform("https://dip.aishu.cn");
+
+  assert.equal(store.loadTokenConfig("https://dip.aishu.cn")?.accessToken, "token-a");
+  assert.equal(store.loadCallbackSession("https://dip.aishu.cn")?.code, "code-1");
+
+  assert.equal(await auth.runAuthCommand(["logout"]), 0);
+
+  assert.equal(store.hasPlatform("https://dip.aishu.cn"), true);
+  assert.equal(store.loadClientConfig("https://dip.aishu.cn")?.clientId, "client-a");
+  assert.equal(store.loadTokenConfig("https://dip.aishu.cn"), null);
+  assert.equal(store.loadCallbackSession("https://dip.aishu.cn"), null);
+  assert.equal(store.getCurrentPlatform(), "https://dip.aishu.cn");
+});
+
 test("formatAuthStatusSummary includes platform token and callback details", () => {
   const lines = formatAuthStatusSummary({
     client: {

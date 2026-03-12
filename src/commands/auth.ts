@@ -1,4 +1,5 @@
 import {
+  clearPlatformSession,
   deletePlatform,
   getConfigDir,
   getCurrentPlatform,
@@ -11,6 +12,7 @@ import {
 } from "../config/store.js";
 import type { CallbackSession, ClientConfig, TokenConfig } from "../config/store.js";
 import {
+  callLogoutEndpoint,
   formatHttpError,
   getStoredAuthSummary,
   login,
@@ -63,7 +65,7 @@ export function formatAuthStatusSummary(input: {
 export async function runAuthCommand(args: string[]): Promise<number> {
   const target = args[0];
 
-  if (target && target !== "status" && target !== "list" && target !== "use" && target !== "delete") {
+  if (target && target !== "status" && target !== "list" && target !== "use" && target !== "delete" && target !== "logout") {
     try {
       const normalizedTarget = normalizeBaseUrl(target);
       const port = Number(readOption(args, "--port") ?? "9010");
@@ -198,11 +200,35 @@ export async function runAuthCommand(args: string[]): Promise<number> {
     return 0;
   }
 
+  if (target === "logout") {
+    const resolvedTarget = args[1] ? resolvePlatformIdentifier(args[1]) : getCurrentPlatform();
+    const logoutTarget =
+      resolvedTarget && /^https?:\/\//.test(resolvedTarget) ? normalizeBaseUrl(resolvedTarget) : resolvedTarget;
+    if (!logoutTarget) {
+      console.error("Usage: kweaverc auth logout [platform-url|alias]");
+      console.error("No current platform. Specify a platform to logout, e.g. kweaverc auth logout <platform-url|alias>");
+      return 1;
+    }
+    if (!hasPlatform(logoutTarget)) {
+      console.error(`No saved client config found for ${logoutTarget}.`);
+      return 1;
+    }
+    const { client, token } = getStoredAuthSummary(logoutTarget);
+    if (client) {
+      await callLogoutEndpoint(client, token);
+    }
+    clearPlatformSession(logoutTarget);
+    console.log(`Logged out: ${logoutTarget}`);
+    console.log(`Run \`kweaverc auth ${logoutTarget}\` to sign in again (e.g. as a different user).`);
+    return 0;
+  }
+
   console.error("Usage: kweaverc auth <platform-url>");
   console.error("       kweaverc auth <platform-url> [--alias <name>] [--no-open] [--host <host>] [--redirect-uri <uri>]");
   console.error("       kweaverc auth status [platform-url|alias]");
   console.error("       kweaverc auth list");
   console.error("       kweaverc auth use <platform-url|alias>");
+  console.error("       kweaverc auth logout [platform-url|alias]");
   console.error("       kweaverc auth delete <platform-url|alias>");
   return 1;
 }
