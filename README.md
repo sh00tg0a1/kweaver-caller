@@ -20,6 +20,22 @@ After global install, the command is available directly:
 kweaverc --help
 ```
 
+## Agent Skill
+
+This repo includes an [Agent Skill](https://agentskills.io) (`kweaver-core`) for AI coding agents (Cursor, Claude Code, Codex, etc.). Install it from [skills.sh](https://skills.sh):
+
+```bash
+npx skills add sh00tg0a1/kweaver-caller --skill kweaver-core
+```
+
+Or install globally:
+
+```bash
+npx skills add sh00tg0a1/kweaver-caller --skill kweaver-core -g
+```
+
+Skill page: [skills.sh/sh00tg0a1/kweaver-caller/kweaver-core](https://skills.sh/sh00tg0a1/kweaver-caller/kweaver-core)
+
 ## Development
 
 Requires Node.js 22+. If you use `nvm`, run `nvm use` to pick the version from `.nvmrc`.
@@ -43,6 +59,8 @@ node dist/cli.js --help
 ```
 
 ## Auth
+
+All commands require authentication. Run `kweaverc auth <platform-url>` before using any other command. If you haven't authenticated, the CLI will prompt you to do so.
 
 Pass only the platform base URL:
 
