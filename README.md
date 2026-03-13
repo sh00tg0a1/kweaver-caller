@@ -20,21 +20,15 @@ After global install, the command is available directly:
 kweaverc --help
 ```
 
-## Agent Skill
+## Skill
 
-This repo includes an [Agent Skill](https://agentskills.io) (`kweaver-core`) for AI coding agents (Cursor, Claude Code, Codex, etc.). Install it from [skills.sh](https://skills.sh):
+This repo provides the Agent Skill `kweaver-core` for AI coding assistants (Cursor, Claude Code, Codex, etc.). Install:
 
 ```bash
 npx skills add sh00tg0a1/kweaver-caller --skill kweaver-core
 ```
 
-Or install globally:
-
-```bash
-npx skills add sh00tg0a1/kweaver-caller --skill kweaver-core -g
-```
-
-Skill page: [skills.sh/sh00tg0a1/kweaver-caller/kweaver-core](https://skills.sh/sh00tg0a1/kweaver-caller/kweaver-core)
+Add `-g` for global install. See [skills.sh](https://skills.sh/sh00tg0a1/kweaver-caller/kweaver-core).
 
 ## Development
 
