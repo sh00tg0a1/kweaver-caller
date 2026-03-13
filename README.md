@@ -50,7 +50,7 @@ Use `nvm use` first, then pass only the platform base URL:
 
 ```bash
 npm run build
-kweaverc auth https://dip.aishu.cn
+kweaverc auth https://platform.example.com
 ```
 
 The CLI stores auth state per platform under `~/.kweaver/platforms/` and keeps one active platform pointer. If no client is stored for the target platform, it registers one through `/oauth2/clients`, generates the full `/oauth2/auth?...` URL, and opens the browser. You complete login and verification manually in the browser.
@@ -59,8 +59,8 @@ The CLI also starts a local callback listener on `http://127.0.0.1:9010/callback
 You can assign a short alias when saving a platform:
 
 ```bash
-kweaverc auth https://dip.aishu.cn --alias dip
-kweaverc auth https://adp.aishu.cn --alias adp
+kweaverc auth https://platform.example.com --alias primary
+kweaverc auth https://platform2.example.com --alias secondary
 ```
 
 Inspect or switch saved platforms:
@@ -87,7 +87,7 @@ kweaverc token
 Example aligned with `ref/test_api.js`:
 
 ```bash
-kweaverc call 'https://dip.aishu.cn/api/agent-factory/v3/personal-space/agent-list?name=&pagination_marker_str=&publish_status=&publish_to_be=&size=48' -H 'accept: application/json, text/plain, */*' -H 'x-language: zh-CN' -H 'x-requested-with: XMLHttpRequest' -bd bd_public --pretty
+kweaverc call 'https://platform.example.com/api/agent-factory/v3/personal-space/agent-list?name=&pagination_marker_str=&publish_status=&publish_to_be=&size=48' -H 'accept: application/json, text/plain, */*' -H 'x-language: zh-CN' -H 'x-requested-with: XMLHttpRequest' -bd bd_public --pretty
 ```
 
 Add `--verbose` to print the final request method, URL, headers, and whether a body was sent. This is useful when checking whether headers such as `x-business-domain`, `authorization`, and `token` were actually attached.
