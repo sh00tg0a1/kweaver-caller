@@ -4,10 +4,9 @@ A TypeScript CLI tool to call KWeaver.
 
 ## Install
 
-Use Node from `.nvmrc`, then install globally or run with `npx`:
+Requires Node.js 22+. Install globally or run with `npx`:
 
 ```bash
-nvm use
 npm install -g kweaver-caller
 ```
 
@@ -23,10 +22,9 @@ kweaverc --help
 
 ## Development
 
-Use `nvm` to keep the Node version consistent:
+Requires Node.js 22+. If you use `nvm`, run `nvm use` to pick the version from `.nvmrc`.
 
 ```bash
-nvm use
 npm install
 ```
 
@@ -46,10 +44,9 @@ node dist/cli.js --help
 
 ## Auth
 
-Use `nvm use` first, then pass only the platform base URL:
+Pass only the platform base URL:
 
 ```bash
-npm run build
 kweaverc auth https://platform.example.com
 ```
 
@@ -68,8 +65,8 @@ Inspect or switch saved platforms:
 ```bash
 kweaverc auth list
 kweaverc auth status
-kweaverc auth status dip
-kweaverc auth use dip
+kweaverc auth status primary
+kweaverc auth use primary
 ```
 
 ## API Call
