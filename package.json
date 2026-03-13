@@ -23,6 +23,10 @@
     "typescript",
     "kweaver"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sh00tg0a1/kweaver-caller.git"
+  },
   "license": "MIT",
   "publishConfig": {
     "access": "public"
