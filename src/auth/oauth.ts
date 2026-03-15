@@ -378,6 +378,18 @@ export async function refreshAccessToken(client: ClientConfig, refreshToken: str
 }
 
 export async function ensureValidToken(): Promise<TokenConfig> {
+  const envToken = process.env.KWEAVER_TOKEN;
+  const envBaseUrl = process.env.KWEAVER_BASE_URL;
+  if (envToken && envBaseUrl) {
+    return {
+      baseUrl: normalizeBaseUrl(envBaseUrl),
+      accessToken: envToken,
+      tokenType: "bearer",
+      scope: "openid",
+      obtainedAt: new Date().toISOString(),
+    };
+  }
+
   const currentPlatform = getCurrentPlatform();
   if (!currentPlatform) {
     throw new Error("No active platform selected. Run `kweaverc auth <platform-url>` first.");

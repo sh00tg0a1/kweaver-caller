@@ -64,6 +64,16 @@ export function formatAuthStatusSummary(input: {
 
 export async function runAuthCommand(args: string[]): Promise<number> {
   const target = args[0];
+  const rest = args.slice(1);
+
+  if (target === "login") {
+    const url = rest[0];
+    if (!url) {
+      console.error("Usage: kweaverc auth login <platform-url>");
+      return 1;
+    }
+    return runAuthCommand([url, ...rest.slice(1)]);
+  }
 
   if (target && target !== "status" && target !== "list" && target !== "use" && target !== "delete" && target !== "logout") {
     try {
@@ -224,6 +234,7 @@ export async function runAuthCommand(args: string[]): Promise<number> {
   }
 
   console.error("Usage: kweaverc auth <platform-url>");
+  console.error("       kweaverc auth login <platform-url>");
   console.error("       kweaverc auth <platform-url> [--alias <name>] [--no-open] [--host <host>] [--redirect-uri <uri>]");
   console.error("       kweaverc auth status [platform-url|alias]");
   console.error("       kweaverc auth list");

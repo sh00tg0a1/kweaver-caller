@@ -93,7 +93,7 @@ Examples:
   const base = ensureContextLoaderConfig();
   const options = { ...base, accessToken: token.accessToken };
 
-  let pretty = false;
+  let pretty = true;
   const prettyIdx = rest.indexOf("--pretty");
   if (prettyIdx !== -1) {
     pretty = true;

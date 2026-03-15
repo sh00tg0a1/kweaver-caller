@@ -3,6 +3,7 @@ dist/
 .DS_Store
 .env
 coverage/
+test-result/
 *.tgz
 .ralph/
 RALPH_TASK.md

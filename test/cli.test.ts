@@ -25,13 +25,20 @@ import {
   parseBknUpdateArgs,
   parseBknDeleteArgs,
   parseBknObjectTypeQueryArgs,
+  parseBknActionTypeExecuteArgs,
   formatSimpleBknList,
 } from "../src/commands/bkn.js";
-import { parseAgentListArgs, formatSimpleAgentList } from "../src/commands/agent.js";
+import {
+  parseAgentListArgs,
+  parseAgentSessionsArgs,
+  parseAgentHistoryArgs,
+  formatSimpleAgentList,
+} from "../src/commands/agent.js";
 import { parseTokenArgs } from "../src/commands/token.js";
 import {
   buildAuthorizationUrl,
   buildAuthRedirectConfig,
+  ensureValidToken,
   formatHttpError,
   getAuthorizationSuccessMessage,
 } from "../src/auth/oauth.js";
@@ -96,7 +103,7 @@ test("parseCallArgs parses curl-style request flags", () => {
   assert.equal(parsed.method, "POST");
   assert.equal(parsed.headers.get("accept"), "application/json");
   assert.equal(parsed.body, "{\"ping\":true}");
-  assert.equal(parsed.pretty, false);
+  assert.equal(parsed.pretty, true);
   assert.equal(parsed.verbose, false);
   assert.equal(parsed.businessDomain, "bd_public");
 });
@@ -587,7 +594,7 @@ test("parseBknListArgs parses flags with defaults", () => {
   assert.equal(opts.direction, "desc");
   assert.equal(opts.businessDomain, "bd_public");
   assert.equal(opts.detail, false);
-  assert.equal(opts.pretty, false);
+  assert.equal(opts.pretty, true);
   assert.equal(opts.verbose, false);
 });
 
@@ -789,7 +796,7 @@ test("parseAgentListArgs parses flags with defaults", () => {
   assert.equal(opts.custom_space_id, "");
   assert.equal(opts.is_to_square, 1);
   assert.equal(opts.businessDomain, "bd_public");
-  assert.equal(opts.pretty, false);
+  assert.equal(opts.pretty, true);
   assert.equal(opts.verbose, false);
 });
 
@@ -1083,4 +1090,83 @@ test("formatSimpleAgentList keeps only name id description", () => {
       2
     )
   );
+});
+
+test("parseBknDeleteArgs parses --yes flag to skip confirmation", () => {
+  const opts = parseBknDeleteArgs(["kn-123", "--yes"]);
+  assert.equal(opts.knId, "kn-123");
+  assert.equal(opts.yes, true);
+});
+
+test("parseBknDeleteArgs defaults yes to false", () => {
+  const opts = parseBknDeleteArgs(["kn-123"]);
+  assert.equal(opts.yes, false);
+});
+
+test("parseBknDeleteArgs accepts -y shorthand", () => {
+  const opts = parseBknDeleteArgs(["kn-123", "-y"]);
+  assert.equal(opts.yes, true);
+});
+
+test("parseBknActionTypeExecuteArgs defaults to wait=true timeout=300", () => {
+  const opts = parseBknActionTypeExecuteArgs(["kn-123", "at-456", "{}"]);
+  assert.equal(opts.wait, true);
+  assert.equal(opts.timeout, 300);
+});
+
+test("parseBknActionTypeExecuteArgs parses --no-wait", () => {
+  const opts = parseBknActionTypeExecuteArgs(["kn-123", "at-456", "{}", "--no-wait"]);
+  assert.equal(opts.wait, false);
+});
+
+test("parseBknActionTypeExecuteArgs parses --timeout", () => {
+  const opts = parseBknActionTypeExecuteArgs(["kn-123", "at-456", "{}", "--timeout", "60"]);
+  assert.equal(opts.timeout, 60);
+});
+
+test("parseAgentSessionsArgs requires agent_id", () => {
+  assert.throws(() => parseAgentSessionsArgs([]), /Missing agent_id/);
+});
+
+test("parseAgentSessionsArgs parses positional agent_id", () => {
+  const opts = parseAgentSessionsArgs(["agent-123"]);
+  assert.equal(opts.agentId, "agent-123");
+  assert.equal(opts.businessDomain, "bd_public");
+  assert.equal(opts.pretty, true);
+  assert.equal(opts.limit, undefined);
+});
+
+test("parseAgentSessionsArgs parses --limit and -bd", () => {
+  const opts = parseAgentSessionsArgs(["agent-123", "--limit", "10", "-bd", "bd_enterprise"]);
+  assert.equal(opts.limit, 10);
+  assert.equal(opts.businessDomain, "bd_enterprise");
+});
+
+test("parseAgentHistoryArgs requires conversation_id", () => {
+  assert.throws(() => parseAgentHistoryArgs([]), /Missing conversation_id/);
+});
+
+test("parseAgentHistoryArgs parses positional conversation_id", () => {
+  const opts = parseAgentHistoryArgs(["conv-abc"]);
+  assert.equal(opts.conversationId, "conv-abc");
+  assert.equal(opts.pretty, true);
+  assert.equal(opts.limit, undefined);
+});
+
+test("parseAgentHistoryArgs parses --limit", () => {
+  const opts = parseAgentHistoryArgs(["conv-abc", "--limit", "20"]);
+  assert.equal(opts.limit, 20);
+});
+
+test("ensureValidToken returns env token when KWEAVER_TOKEN and KWEAVER_BASE_URL are set", async () => {
+  process.env.KWEAVER_TOKEN = "env-token-123";
+  process.env.KWEAVER_BASE_URL = "https://env.example.com/";
+  try {
+    const result = await ensureValidToken();
+    assert.equal(result.accessToken, "env-token-123");
+    assert.equal(result.baseUrl, "https://env.example.com");
+  } finally {
+    delete process.env.KWEAVER_TOKEN;
+    delete process.env.KWEAVER_BASE_URL;
+  }
 });

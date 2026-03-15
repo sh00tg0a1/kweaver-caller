@@ -1,3 +1,4 @@
+import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { ensureValidToken, formatHttpError } from "../auth/oauth.js";
 import {
@@ -59,7 +60,7 @@ export function parseBknListArgs(args: string[]): BknListOptions {
   let direction: "asc" | "desc" = "desc";
   let businessDomain = "bd_public";
   let detail = false;
-  let pretty = false;
+  let pretty = true;
   let verbose = false;
   let name_pattern: string | undefined;
   let tag: string | undefined;
@@ -157,7 +158,7 @@ export function parseBknGetArgs(args: string[]): BknGetOptions {
   let stats = false;
   let exportMode = false;
   let businessDomain = "bd_public";
-  let pretty = false;
+  let pretty = true;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -228,7 +229,7 @@ export function parseBknCreateArgs(args: string[]): BknCreateOptions {
   let import_mode: "normal" | "ignore" | "overwrite" | undefined;
   let validate_dependency: boolean | undefined;
   let businessDomain = "bd_public";
-  let pretty = false;
+  let pretty = true;
 
   const flags: Record<string, string> = {};
   for (let i = 0; i < args.length; i += 1) {
@@ -325,7 +326,7 @@ export function parseBknUpdateArgs(args: string[]): BknUpdateOptions {
   let knId = "";
   let bodyFile: string | undefined;
   let businessDomain = "bd_public";
-  let pretty = false;
+  let pretty = true;
 
   const flags: Record<string, string> = {};
   for (let i = 0; i < args.length; i += 1) {
@@ -406,17 +407,24 @@ export function parseBknUpdateArgs(args: string[]): BknUpdateOptions {
 export interface BknDeleteOptions {
   knId: string;
   businessDomain: string;
+  yes: boolean;
 }
 
 export function parseBknDeleteArgs(args: string[]): BknDeleteOptions {
   let knId = "";
   let businessDomain = "bd_public";
+  let yes = false;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
 
     if (arg === "--help" || arg === "-h") {
       throw new Error("help");
+    }
+
+    if (arg === "--yes" || arg === "-y") {
+      yes = true;
+      continue;
     }
 
     if (arg === "-bd" || arg === "--biz-domain") {
@@ -440,7 +448,7 @@ export function parseBknDeleteArgs(args: string[]): BknDeleteOptions {
     throw new Error("Missing kn-id. Usage: kweaverc bkn delete <kn-id>");
   }
 
-  return { knId, businessDomain };
+  return { knId, businessDomain, yes };
 }
 
 export interface BknObjectTypeQueryOptions {
@@ -482,7 +490,7 @@ function parseSearchAfterArray(text: string): unknown[] {
 }
 
 export function parseBknObjectTypeQueryArgs(args: string[]): BknObjectTypeQueryOptions {
-  let pretty = false;
+  let pretty = true;
   let businessDomain = "bd_public";
   let limit: number | undefined;
   let searchAfter: unknown[] | undefined;
@@ -653,7 +661,7 @@ function parseOntologyQueryFlags(args: string[]): {
   pretty: boolean;
   businessDomain: string;
 } {
-  let pretty = false;
+  let pretty = true;
   let businessDomain = "bd_public";
   const filteredArgs: string[] = [];
 
@@ -674,6 +682,70 @@ function parseOntologyQueryFlags(args: string[]): {
     filteredArgs.push(arg);
   }
   return { filteredArgs, pretty, businessDomain };
+}
+
+export interface BknActionTypeExecuteOptions {
+  knId: string;
+  atId: string;
+  body: string;
+  pretty: boolean;
+  businessDomain: string;
+  wait: boolean;
+  timeout: number;
+}
+
+export function parseBknActionTypeExecuteArgs(args: string[]): BknActionTypeExecuteOptions {
+  let pretty = true;
+  let businessDomain = "bd_public";
+  let wait = true;
+  let timeout = 300;
+  const positional: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      throw new Error("help");
+    }
+    if (arg === "--pretty") {
+      pretty = true;
+      continue;
+    }
+    if ((arg === "-bd" || arg === "--biz-domain") && args[i + 1]) {
+      businessDomain = args[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--wait") {
+      wait = true;
+      continue;
+    }
+    if (arg === "--no-wait") {
+      wait = false;
+      continue;
+    }
+    if (arg === "--timeout" && args[i + 1]) {
+      timeout = parseInt(args[i + 1], 10);
+      if (Number.isNaN(timeout) || timeout < 1) timeout = 300;
+      i += 1;
+      continue;
+    }
+    positional.push(arg);
+  }
+
+  const [knId, atId, body] = positional;
+  if (!knId || !atId || !body) {
+    throw new Error("Missing kn-id, at-id, or body. Usage: kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [options]");
+  }
+
+  return {
+    knId,
+    atId,
+    body,
+    pretty,
+    businessDomain,
+    wait,
+    timeout,
+  };
 }
 
 async function runBknObjectTypeCommand(args: string[]): Promise<number> {
@@ -773,63 +845,134 @@ Query subgraph via ontology-query API. JSON body format see ref/ontology/ontolog
   }
 }
 
+const TERMINAL_STATUSES = ["SUCCESS", "FAILED", "CANCELLED"];
+
+function extractExecutionId(body: string): string | null {
+  try {
+    const data = JSON.parse(body) as Record<string, unknown>;
+    const id = data.execution_id ?? data.id;
+    return typeof id === "string" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractStatus(body: string): string {
+  try {
+    const data = JSON.parse(body) as Record<string, unknown>;
+    const status = data.status;
+    return typeof status === "string" ? status : "";
+  } catch {
+    return "";
+  }
+}
+
 async function runBknActionTypeCommand(args: string[]): Promise<number> {
   const [action, ...rest] = args;
   if (!action || action === "--help" || action === "-h") {
     console.log(`kweaverc bkn action-type query <kn-id> <at-id> '<json>' [--pretty] [-bd value]
-kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [--pretty] [-bd value]
+kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [--pretty] [-bd value] [--wait|--no-wait] [--timeout n]
 
-Query or execute actions. execute has side effects - only use when explicitly requested.`);
+Query or execute actions. execute has side effects - only use when explicitly requested.
+  --wait (default)    Poll until execution completes
+  --no-wait           Return immediately after starting execution
+  --timeout <seconds> Max wait time when --wait (default: 300)`);
     return 0;
   }
 
-  let filteredArgs: string[];
-  let pretty: boolean;
-  let businessDomain: string;
-  try {
-    const parsed = parseOntologyQueryFlags(rest);
-    filteredArgs = parsed.filteredArgs;
-    pretty = parsed.pretty;
-    businessDomain = parsed.businessDomain;
-  } catch (error) {
-    if (error instanceof Error && error.message === "help") {
-      return 0;
+  if (action === "query") {
+    let filteredArgs: string[];
+    let pretty: boolean;
+    let businessDomain: string;
+    try {
+      const parsed = parseOntologyQueryFlags(rest);
+      filteredArgs = parsed.filteredArgs;
+      pretty = parsed.pretty;
+      businessDomain = parsed.businessDomain;
+    } catch (error) {
+      if (error instanceof Error && error.message === "help") return 0;
+      throw error;
     }
-    throw error;
-  }
-
-  const [knId, atId, body] = filteredArgs;
-  if (!knId || !atId || !body) {
-    console.error(
-      "Usage: kweaverc bkn action-type query <kn-id> <at-id> '<json>' [options]\n       kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [options]"
-    );
-    return 1;
-  }
-
-  try {
-    const token = await ensureValidToken();
-    const base = {
-      baseUrl: token.baseUrl,
-      accessToken: token.accessToken,
-      knId,
-      businessDomain,
-    };
-    const result =
-      action === "query"
-        ? await actionTypeQuery({ ...base, atId, body })
-        : action === "execute"
-          ? await actionTypeExecute({ ...base, atId, body })
-          : null;
-    if (!result) {
-      console.error(`Unknown action-type action: ${action}. Use query or execute.`);
+    const [knId, atId, body] = filteredArgs;
+    if (!knId || !atId || !body) {
+      console.error("Usage: kweaverc bkn action-type query <kn-id> <at-id> '<json>' [options]");
       return 1;
     }
-    console.log(formatCallOutput(result, pretty));
-    return 0;
-  } catch (error) {
-    console.error(formatHttpError(error));
-    return 1;
+    try {
+      const token = await ensureValidToken();
+      const result = await actionTypeQuery({
+        baseUrl: token.baseUrl,
+        accessToken: token.accessToken,
+        knId,
+        atId,
+        body,
+        businessDomain,
+      });
+      console.log(formatCallOutput(result, pretty));
+      return 0;
+    } catch (error) {
+      console.error(formatHttpError(error));
+      return 1;
+    }
   }
+
+  if (action === "execute") {
+    let options: BknActionTypeExecuteOptions;
+    try {
+      options = parseBknActionTypeExecuteArgs(rest);
+    } catch (error) {
+      if (error instanceof Error && error.message === "help") return 0;
+      console.error(formatHttpError(error));
+      return 1;
+    }
+    try {
+      const token = await ensureValidToken();
+      const base = {
+        baseUrl: token.baseUrl,
+        accessToken: token.accessToken,
+        knId: options.knId,
+        atId: options.atId,
+        body: options.body,
+        businessDomain: options.businessDomain,
+      };
+      const result = await actionTypeExecute(base);
+      if (!options.wait) {
+        console.log(formatCallOutput(result, options.pretty));
+        return 0;
+      }
+      const executionId = extractExecutionId(result);
+      if (!executionId) {
+        console.log(formatCallOutput(result, options.pretty));
+        return 0;
+      }
+      const deadline = Date.now() + options.timeout * 1000;
+      let lastBody = result;
+      while (Date.now() < deadline) {
+        const status = extractStatus(lastBody);
+        if (TERMINAL_STATUSES.includes(status.toUpperCase())) {
+          console.log(formatCallOutput(lastBody, options.pretty));
+          return status.toUpperCase() === "SUCCESS" ? 0 : 1;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+        lastBody = await actionExecutionGet({
+          baseUrl: token.baseUrl,
+          accessToken: token.accessToken,
+          knId: options.knId,
+          executionId,
+          businessDomain: options.businessDomain,
+        });
+      }
+      console.error(`Action execution did not complete within ${options.timeout}s`);
+      console.log(formatCallOutput(lastBody, options.pretty));
+      return 1;
+    } catch (error) {
+      console.error(formatHttpError(error));
+      return 1;
+    }
+  }
+
+  console.error(`Unknown action-type action: ${action}. Use query or execute.`);
+  return 1;
 }
 
 async function runBknActionExecutionCommand(args: string[]): Promise<number> {
@@ -886,7 +1029,7 @@ Options for list: --limit, --need-total, --action-type-id, --status, --trigger-t
     return 0;
   }
 
-  let pretty = false;
+  let pretty = true;
   let businessDomain = "bd_public";
   let limit: number | undefined;
   let needTotal: boolean | undefined;
@@ -1107,6 +1250,7 @@ const BKN_DELETE_HELP = `kweaverc bkn delete <kn-id>
 Delete a knowledge network and its object types, relation types, action types, and concept groups.
 
 Options:
+  --yes, -y          Skip confirmation prompt
   -bd, --biz-domain <value>  Business domain (default: bd_public)`;
 
 async function runBknGetCommand(args: string[]): Promise<number> {
@@ -1210,6 +1354,17 @@ async function runBknUpdateCommand(args: string[]): Promise<number> {
   }
 }
 
+function confirmDelete(knId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`Delete knowledge network ${knId}? [y/N] `, (answer) => {
+      rl.close();
+      const trimmed = answer.trim().toLowerCase();
+      resolve(trimmed === "y" || trimmed === "yes");
+    });
+  });
+}
+
 async function runBknDeleteCommand(args: string[]): Promise<number> {
   let options: BknDeleteOptions;
   try {
@@ -1221,6 +1376,14 @@ async function runBknDeleteCommand(args: string[]): Promise<number> {
     }
     console.error(formatHttpError(error));
     return 1;
+  }
+
+  if (!options.yes) {
+    const confirmed = await confirmDelete(options.knId);
+    if (!confirmed) {
+      console.error("Aborted.");
+      return 1;
+    }
   }
 
   try {

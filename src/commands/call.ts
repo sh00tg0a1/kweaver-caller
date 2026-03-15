@@ -16,7 +16,7 @@ export function parseCallArgs(args: string[]): CallInvocation {
   let method = "GET";
   let body: string | undefined;
   let url: string | undefined;
-  let pretty = false;
+  let pretty = true;
   let verbose = false;
   let businessDomain = "bd_public";
 
