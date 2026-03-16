@@ -219,3 +219,225 @@ export async function deleteKnowledgeNetwork(
     throw new HttpError(response.status, response.statusText, body);
   }
 }
+
+/**
+ * List object types (对象类) — ontology-manager.
+ * @see ref/ontology/ontology-manager-object-type.yaml
+ */
+export interface ListObjectTypesOptions {
+  baseUrl: string;
+  accessToken: string;
+  knId: string;
+  businessDomain?: string;
+  name_pattern?: string;
+  sort?: string;
+  direction?: "asc" | "desc";
+  offset?: number;
+  limit?: number;
+  tag?: string;
+  group_id?: string;
+}
+
+export async function listObjectTypes(
+  options: ListObjectTypesOptions
+): Promise<string> {
+  const {
+    baseUrl,
+    accessToken,
+    knId,
+    businessDomain = "bd_public",
+    name_pattern,
+    sort = "update_time",
+    direction = "desc",
+    offset = 0,
+    limit = -1,
+    tag,
+    group_id,
+  } = options;
+
+  const base = baseUrl.replace(/\/+$/, "");
+  const url = new URL(
+    `${base}/api/ontology-manager/v1/knowledge-networks/${encodeURIComponent(knId)}/object-types`
+  );
+  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("sort", sort);
+  url.searchParams.set("direction", direction);
+  if (name_pattern !== undefined && name_pattern !== "") {
+    url.searchParams.set("name_pattern", name_pattern);
+  }
+  if (tag !== undefined && tag !== "") {
+    url.searchParams.set("tag", tag);
+  }
+  if (group_id !== undefined && group_id !== "") {
+    url.searchParams.set("group_id", group_id);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: buildHeaders(accessToken, businessDomain),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new HttpError(response.status, response.statusText, body);
+  }
+  return body;
+}
+
+/**
+ * List relation types (关系类) — ontology-manager.
+ * @see ref/ontology/ontology-manager-relation-type.yaml
+ */
+export interface ListRelationTypesOptions {
+  baseUrl: string;
+  accessToken: string;
+  knId: string;
+  businessDomain?: string;
+  name_pattern?: string;
+  sort?: string;
+  direction?: "asc" | "desc";
+  offset?: number;
+  limit?: number;
+  tag?: string;
+  group_id?: string;
+  source_object_type_id?: string;
+  target_object_type_id?: string;
+  bound_object_type_id?: string[];
+}
+
+export async function listRelationTypes(
+  options: ListRelationTypesOptions
+): Promise<string> {
+  const {
+    baseUrl,
+    accessToken,
+    knId,
+    businessDomain = "bd_public",
+    name_pattern,
+    sort = "update_time",
+    direction = "desc",
+    offset = 0,
+    limit = -1,
+    tag,
+    group_id,
+    source_object_type_id,
+    target_object_type_id,
+    bound_object_type_id,
+  } = options;
+
+  const base = baseUrl.replace(/\/+$/, "");
+  const url = new URL(
+    `${base}/api/ontology-manager/v1/knowledge-networks/${encodeURIComponent(knId)}/relation-types`
+  );
+  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("sort", sort);
+  url.searchParams.set("direction", direction);
+  if (name_pattern !== undefined && name_pattern !== "") {
+    url.searchParams.set("name_pattern", name_pattern);
+  }
+  if (tag !== undefined && tag !== "") {
+    url.searchParams.set("tag", tag);
+  }
+  if (group_id !== undefined && group_id !== "") {
+    url.searchParams.set("group_id", group_id);
+  }
+  if (source_object_type_id !== undefined && source_object_type_id !== "") {
+    url.searchParams.set("source_object_type_id", source_object_type_id);
+  }
+  if (target_object_type_id !== undefined && target_object_type_id !== "") {
+    url.searchParams.set("target_object_type_id", target_object_type_id);
+  }
+  if (bound_object_type_id?.length) {
+    for (const id of bound_object_type_id) {
+      url.searchParams.append("bound_object_type_id", id);
+    }
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: buildHeaders(accessToken, businessDomain),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new HttpError(response.status, response.statusText, body);
+  }
+  return body;
+}
+
+/**
+ * List action types (行动类) — ontology-manager.
+ * @see ref/ontology/ontology-manager-action-type.yaml
+ */
+export interface ListActionTypesOptions {
+  baseUrl: string;
+  accessToken: string;
+  knId: string;
+  businessDomain?: string;
+  name_pattern?: string;
+  sort?: string;
+  direction?: "asc" | "desc";
+  offset?: number;
+  limit?: number;
+  tag?: string;
+  group_id?: string;
+  action_type?: "add" | "modify" | "delete";
+  object_type_id?: string;
+}
+
+export async function listActionTypes(
+  options: ListActionTypesOptions
+): Promise<string> {
+  const {
+    baseUrl,
+    accessToken,
+    knId,
+    businessDomain = "bd_public",
+    name_pattern,
+    sort = "update_time",
+    direction = "desc",
+    offset = 0,
+    limit = -1,
+    tag,
+    group_id,
+    action_type,
+    object_type_id,
+  } = options;
+
+  const base = baseUrl.replace(/\/+$/, "");
+  const url = new URL(
+    `${base}/api/ontology-manager/v1/knowledge-networks/${encodeURIComponent(knId)}/action-types`
+  );
+  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("sort", sort);
+  url.searchParams.set("direction", direction);
+  if (name_pattern !== undefined && name_pattern !== "") {
+    url.searchParams.set("name_pattern", name_pattern);
+  }
+  if (tag !== undefined && tag !== "") {
+    url.searchParams.set("tag", tag);
+  }
+  if (group_id !== undefined && group_id !== "") {
+    url.searchParams.set("group_id", group_id);
+  }
+  if (action_type !== undefined && action_type !== "") {
+    url.searchParams.set("action_type", action_type);
+  }
+  if (object_type_id !== undefined && object_type_id !== "") {
+    url.searchParams.set("object_type_id", object_type_id);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: buildHeaders(accessToken, businessDomain),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new HttpError(response.status, response.statusText, body);
+  }
+  return body;
+}

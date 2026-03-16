@@ -7,6 +7,9 @@ import {
   createKnowledgeNetwork,
   updateKnowledgeNetwork,
   deleteKnowledgeNetwork,
+  listObjectTypes,
+  listRelationTypes,
+  listActionTypes,
 } from "../api/knowledge-networks.js";
 import {
   objectTypeQuery,
@@ -583,9 +586,12 @@ Subcommands:
   delete <kn-id>       Delete a knowledge network
   export <kn-id>       Export knowledge network (alias for get --export)
   stats <kn-id>        Get statistics (alias for get --stats)
+  object-type list <kn-id>   List object types (schema, ontology-manager)
   object-type query <kn-id> <ot-id> ['<json>']   Query object instances (ontology-query; supports --limit/--search-after)
   object-type properties <kn-id> <ot-id> '<json>'   Query object properties
+  relation-type list <kn-id>   List relation types (schema, ontology-manager)
   subgraph <kn-id> '<json>'   Query subgraph
+  action-type list <kn-id>   List action types (schema, ontology-manager)
   action-type query <kn-id> <at-id> '<json>'   Query action info
   action-type execute <kn-id> <at-id> '<json>'   Execute action (has side effects)
   action-execution get <kn-id> <execution-id>   Get execution status
@@ -635,6 +641,10 @@ export async function runBknCommand(args: string[]): Promise<number> {
     return runBknObjectTypeCommand(rest);
   }
 
+  if (subcommand === "relation-type") {
+    return runBknRelationTypeCommand(rest);
+  }
+
   if (subcommand === "subgraph") {
     return runBknSubgraphCommand(rest);
   }
@@ -682,6 +692,58 @@ function parseOntologyQueryFlags(args: string[]): {
     filteredArgs.push(arg);
   }
   return { filteredArgs, pretty, businessDomain };
+}
+
+/** Parse flags for bkn object-type list, relation-type list, action-type list */
+function parseBknSchemaListFlags(args: string[]): {
+  filteredArgs: string[];
+  pretty: boolean;
+  businessDomain: string;
+  limit: number;
+  offset: number;
+  name_pattern?: string;
+} {
+  let pretty = true;
+  let businessDomain = "bd_public";
+  let limit = -1;
+  let offset = 0;
+  let name_pattern: string | undefined;
+  const filteredArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      throw new Error("help");
+    }
+    if (arg === "--pretty") {
+      pretty = true;
+      continue;
+    }
+    if ((arg === "-bd" || arg === "--biz-domain") && args[i + 1]) {
+      businessDomain = args[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--limit" && args[i + 1]) {
+      limit = parseInt(args[i + 1], 10);
+      if (Number.isNaN(limit) || limit < -1) limit = -1;
+      i += 1;
+      continue;
+    }
+    if (arg === "--offset" && args[i + 1]) {
+      offset = parseInt(args[i + 1], 10);
+      if (Number.isNaN(offset) || offset < 0) offset = 0;
+      i += 1;
+      continue;
+    }
+    if (arg === "--name-pattern" && args[i + 1]) {
+      name_pattern = args[i + 1];
+      i += 1;
+      continue;
+    }
+    filteredArgs.push(arg);
+  }
+  return { filteredArgs, pretty, businessDomain, limit, offset, name_pattern };
 }
 
 export interface BknActionTypeExecuteOptions {
@@ -751,14 +813,37 @@ export function parseBknActionTypeExecuteArgs(args: string[]): BknActionTypeExec
 async function runBknObjectTypeCommand(args: string[]): Promise<number> {
   const [action, ...rest] = args;
   if (!action || action === "--help" || action === "-h") {
-    console.log(`kweaverc bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>'] [--pretty] [-bd value]
+    console.log(`kweaverc bkn object-type list <kn-id> [--limit n] [--offset n] [--name-pattern str] [--pretty] [-bd value]
+kweaverc bkn object-type query <kn-id> <ot-id> ['<json>'] [--limit <n>] [--search-after '<json-array>'] [--pretty] [-bd value]
 kweaverc bkn object-type properties <kn-id> <ot-id> '<json>' [--pretty] [-bd value]
 
-Query object types via ontology-query API. For query, --limit and --search-after are merged into the JSON body.`);
+list: List object types (schema) from ontology-manager.
+query/properties: Query via ontology-query API. For query, --limit and --search-after are merged into the JSON body.`);
     return 0;
   }
 
   try {
+    if (action === "list") {
+      const parsed = parseBknSchemaListFlags(rest);
+      const [knId] = parsed.filteredArgs;
+      if (!knId) {
+        console.error("Usage: kweaverc bkn object-type list <kn-id> [options]");
+        return 1;
+      }
+      const token = await ensureValidToken();
+      const body = await listObjectTypes({
+        baseUrl: token.baseUrl,
+        accessToken: token.accessToken,
+        knId,
+        businessDomain: parsed.businessDomain,
+        limit: parsed.limit,
+        offset: parsed.offset,
+        name_pattern: parsed.name_pattern,
+      });
+      console.log(formatCallOutput(body, parsed.pretty));
+      return 0;
+    }
+
     if (action === "query") {
       const options = parseBknObjectTypeQueryArgs(rest);
       const token = await ensureValidToken();
@@ -795,8 +880,47 @@ Query object types via ontology-query API. For query, --limit and --search-after
       return 0;
     }
 
-    console.error(`Unknown object-type action: ${action}. Use query or properties.`);
+    console.error(`Unknown object-type action: ${action}. Use list, query, or properties.`);
     return 1;
+  } catch (error) {
+    console.error(formatHttpError(error));
+    return 1;
+  }
+}
+
+async function runBknRelationTypeCommand(args: string[]): Promise<number> {
+  const [action, ...rest] = args;
+  if (!action || action === "--help" || action === "-h") {
+    console.log(`kweaverc bkn relation-type list <kn-id> [--limit n] [--offset n] [--name-pattern str] [--pretty] [-bd value]
+
+List relation types (schema) from ontology-manager.`);
+    return 0;
+  }
+
+  if (action !== "list") {
+    console.error(`Unknown relation-type action: ${action}. Use list.`);
+    return 1;
+  }
+
+  try {
+    const parsed = parseBknSchemaListFlags(rest);
+    const [knId] = parsed.filteredArgs;
+    if (!knId) {
+      console.error("Usage: kweaverc bkn relation-type list <kn-id> [options]");
+      return 1;
+    }
+    const token = await ensureValidToken();
+    const body = await listRelationTypes({
+      baseUrl: token.baseUrl,
+      accessToken: token.accessToken,
+      knId,
+      businessDomain: parsed.businessDomain,
+      limit: parsed.limit,
+      offset: parsed.offset,
+      name_pattern: parsed.name_pattern,
+    });
+    console.log(formatCallOutput(body, parsed.pretty));
+    return 0;
   } catch (error) {
     console.error(formatHttpError(error));
     return 1;
@@ -870,14 +994,42 @@ function extractStatus(body: string): string {
 async function runBknActionTypeCommand(args: string[]): Promise<number> {
   const [action, ...rest] = args;
   if (!action || action === "--help" || action === "-h") {
-    console.log(`kweaverc bkn action-type query <kn-id> <at-id> '<json>' [--pretty] [-bd value]
+    console.log(`kweaverc bkn action-type list <kn-id> [--limit n] [--offset n] [--name-pattern str] [--pretty] [-bd value]
+kweaverc bkn action-type query <kn-id> <at-id> '<json>' [--pretty] [-bd value]
 kweaverc bkn action-type execute <kn-id> <at-id> '<json>' [--pretty] [-bd value] [--wait|--no-wait] [--timeout n]
 
-Query or execute actions. execute has side effects - only use when explicitly requested.
+list: List action types (schema) from ontology-manager.
+query/execute: Query or execute actions. execute has side effects - only use when explicitly requested.
   --wait (default)    Poll until execution completes
   --no-wait           Return immediately after starting execution
   --timeout <seconds> Max wait time when --wait (default: 300)`);
     return 0;
+  }
+
+  if (action === "list") {
+    try {
+      const parsed = parseBknSchemaListFlags(rest);
+      const [knId] = parsed.filteredArgs;
+      if (!knId) {
+        console.error("Usage: kweaverc bkn action-type list <kn-id> [options]");
+        return 1;
+      }
+      const token = await ensureValidToken();
+      const body = await listActionTypes({
+        baseUrl: token.baseUrl,
+        accessToken: token.accessToken,
+        knId,
+        businessDomain: parsed.businessDomain,
+        limit: parsed.limit,
+        offset: parsed.offset,
+        name_pattern: parsed.name_pattern,
+      });
+      console.log(formatCallOutput(body, parsed.pretty));
+      return 0;
+    } catch (error) {
+      console.error(formatHttpError(error));
+      return 1;
+    }
   }
 
   if (action === "query") {
